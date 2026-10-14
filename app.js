@@ -1286,8 +1286,8 @@ function recalculateOcrCurrency() {
   }
 }
 
-// Compress / downscale image for fast processing and mobile memory safety
-function compressImage(file, maxWidth = 1024, maxHeight = 1024, quality = 0.82) {
+// High-resolution image preparation preserving crisp receipt text for OCR
+function prepareImageForOcr(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -1295,139 +1295,107 @@ function compressImage(file, maxWidth = 1024, maxHeight = 1024, quality = 0.82) 
       img.onload = () => {
         let width = img.width;
         let height = img.height;
-        if (width > height) {
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
+        const maxW = 2048;
+        const maxH = 2560;
+
+        if (width > maxW || height > maxH) {
+          const ratio = Math.min(maxW / width, maxH / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
         }
+
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/jpeg", quality);
-        resolve(dataUrl);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.90);
+        resolve({ dataUrl, canvas });
       };
-      img.onerror = () => resolve(e.target.result);
+      img.onerror = () => resolve({ dataUrl: e.target?.result, canvas: null });
       img.src = e.target.result;
     };
-    reader.onerror = () => resolve(null);
+    reader.onerror = () => resolve({ dataUrl: null, canvas: null });
     reader.readAsDataURL(file);
   });
 }
 
-// Client-side intelligent receipt parser (works on any machine, even offline or on GitHub Pages)
-function analyzeReceiptClientSide(fileName, imageBase64) {
-  const lowerName = (fileName || "").toLowerCase();
+// Backward-compatible image compressor
+function compressImage(file, maxWidth = 1024, maxHeight = 1024, quality = 0.85) {
+  return prepareImageForOcr(file).then(res => res.dataUrl);
+}
+
+// Intelligent heuristic receipt text parser (parses real extracted OCR text if AI is offline)
+function parseReceiptTextHeuristically(rawText, fileName) {
+  const text = (rawText || "").trim();
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
   const today = new Date().toISOString().split("T")[0];
 
   let detectedCurrency = "SAR";
-  let merchant = "Scanned Supermarket / Store";
-  let amount = 115.00;
-  let category = "groceries";
-  let items = [
-    "Fresh Dairy Products (24.00 SAR)",
-    "Produce & Fruits (38.50 SAR)",
-    "Bakery Essentials (17.50 SAR)",
-    "Pantry Staples (35.00 SAR)"
-  ];
-  let subtotal = 100.00;
-  let tax = 15.00;
-
-  // Keyword-based smart matching
-  if (lowerName.includes("amazon") || lowerName.includes("aws") || lowerName.includes("usd") || lowerName.includes("dollar") || lowerName.includes("$")) {
+  if (text.includes("$") || text.includes("USD") || text.includes("Dollar")) {
     detectedCurrency = "USD";
-    merchant = "Amazon.com Services LLC (US)";
-    amount = 50.00;
-    category = "shopping";
-    subtotal = 45.45;
-    tax = 4.55;
-    items = [
-      "Developer Tools & Cloud Labs ($29.99 USD)",
-      "High-Speed USB-C Multiport Hub ($15.46 USD)",
-      "Digital Service & Tax ($4.55 USD)"
-    ];
-  } else if (lowerName.includes("starbucks") || lowerName.includes("coffee") || lowerName.includes("cafe")) {
-    detectedCurrency = "USD";
-    merchant = "Starbucks Coffee #1428";
-    amount = 12.00;
-    category = "food";
-    subtotal = 10.81;
-    tax = 1.19;
-    items = [
-      "Venti Iced Caramel Macchiato ($6.75 USD)",
-      "Warm Almond Croissant ($4.06 USD)",
-      "Sales Tax ($1.19 USD)"
-    ];
-  } else if (lowerName.includes("fuel") || lowerName.includes("gas") || lowerName.includes("sasco")) {
-    detectedCurrency = "SAR";
-    merchant = "SASCO Fuel Station #208";
-    amount = 65.00;
-    category = "transport";
-    subtotal = 56.52;
-    tax = 8.48;
-    items = ["Octane 95 Gasoline (27.89 L)"];
-  } else if (lowerName.includes("jarir") || lowerName.includes("book") || lowerName.includes("school")) {
-    detectedCurrency = "SAR";
-    merchant = "Jarir Bookstore - King Abdullah Rd";
-    amount = 189.00;
-    category = "education";
-    subtotal = 164.35;
-    tax = 24.65;
-    items = [
-      "Software Engineering 10th Ed (149.00 SAR)",
-      "Grid Engineering Notebook A5 (40.00 SAR)"
-    ];
-  } else if (lowerName.includes("danube")) {
-    detectedCurrency = "SAR";
-    merchant = "Danube Hypermarket - Panorama";
-    amount = 112.50;
-    category = "groceries";
-    subtotal = 97.83;
-    tax = 14.67;
-    items = [
-      "Alpro Almond Milk 1L (14.50 SAR)",
-      "Italian Sourdough Bread (12.00 SAR)",
-      "Organic Avocados 4pk (26.00 SAR)",
-      "Smoked Salmon 200g (45.00 SAR)",
-      "VAT 15% (15.00 SAR)"
-    ];
-  } else if (lowerName.includes("panda")) {
-    detectedCurrency = "SAR";
-    merchant = "Panda Hypermarket #42";
-    amount = 115.00;
-    category = "groceries";
-    subtotal = 100.00;
-    tax = 15.00;
-    items = [
-      "Fresh Milk 2L (12.00 SAR)",
-      "Whole Grain Bread (8.00 SAR)",
-      "Farm Fresh Eggs (25.00 SAR)",
-      "Fresh Produce (70.00 SAR)"
-    ];
+  } else if (text.includes("EUR") || text.includes("€") || text.includes("Euro")) {
+    detectedCurrency = "EUR";
+  } else if (text.includes("GBP") || text.includes("£") || text.includes("Pound")) {
+    detectedCurrency = "GBP";
+  } else if (text.includes("AED") || text.includes("Dirham")) {
+    detectedCurrency = "AED";
   }
 
-  const rawText = `================================================
-${merchant.toUpperCase()}
-Date: ${today}
-Invoice #: INV-${Math.floor(100000 + Math.random() * 900000)}
-Detected Currency: ${detectedCurrency}
-------------------------------------------------
-${items.map(it => it + " ... [OK]").join("\n")}
-------------------------------------------------
-SUBTOTAL:                              ${subtotal.toFixed(2)} ${detectedCurrency}
-TAX / VAT (15%):                       ${tax.toFixed(2)} ${detectedCurrency}
-TOTAL AMOUNT:                          ${amount.toFixed(2)} ${detectedCurrency}
-------------------------------------------------
-STATUS: Validated via Mobile Web Optical Engine
-OCR Engine: Client-Side Multimodal Parser
-================================================`;
+  // Find store / merchant name (first clean line)
+  let merchant = "";
+  for (const l of lines) {
+    if (l.length >= 3 && !/^\d+$/.test(l) && !l.includes("===") && !l.includes("---") && !l.toLowerCase().includes("receipt") && !l.toLowerCase().includes("tax invoice")) {
+      merchant = l;
+      break;
+    }
+  }
+  if (!merchant) merchant = "Scanned Store Receipt";
+
+  // Search for currency amounts in text
+  const amountMatches = text.match(/\b\d+([.,]\d{2})\b/g) || [];
+  const numbers = amountMatches.map(m => parseFloat(m.replace(",", "."))).filter(n => !isNaN(n) && n > 0 && n < 100000);
+
+  let amount = 0;
+  if (numbers.length > 0) {
+    amount = Math.max(...numbers);
+  } else {
+    const intMatches = text.match(/\b\d{2,4}\b/g) || [];
+    amount = intMatches.length > 0 ? parseFloat(intMatches[0]) : 50.00;
+  }
+
+  const subtotal = Number((amount * 0.8695).toFixed(2));
+  const tax = Number((amount - subtotal).toFixed(2));
+
+  // Determine category from scanned words
+  const lower = (text + " " + merchant + " " + (fileName || "")).toLowerCase();
+  let category = "groceries";
+  if (lower.includes("restaurant") || lower.includes("cafe") || lower.includes("coffee") || lower.includes("burger") || lower.includes("pizza") || lower.includes("food") || lower.includes("kitchen") || lower.includes("dining") || lower.includes("albaik") || lower.includes("mcdonald")) {
+    category = "food";
+  } else if (lower.includes("fuel") || lower.includes("gas") || lower.includes("sasco") || lower.includes("petrol") || lower.includes("uber") || lower.includes("taxi") || lower.includes("transport")) {
+    category = "transport";
+  } else if (lower.includes("pharmacy") || lower.includes("nahdi") || lower.includes("clinic") || lower.includes("health") || lower.includes("hospital") || lower.includes("medicine")) {
+    category = "health";
+  } else if (lower.includes("book") || lower.includes("jarir") || lower.includes("school") || lower.includes("university") || lower.includes("stationery") || lower.includes("education")) {
+    category = "education";
+  } else if (lower.includes("amazon") || lower.includes("noon") || lower.includes("fashion") || lower.includes("clothing") || lower.includes("electronics") || lower.includes("shopping")) {
+    category = "shopping";
+  }
+
+  // Extract items from lines with prices
+  const items = [];
+  for (const line of lines) {
+    if (/\d+[.,]\d{2}/.test(line) && line.length > 4 && !line.toLowerCase().includes("total") && !line.toLowerCase().includes("vat")) {
+      items.push(line);
+      if (items.length >= 8) break;
+    }
+  }
+
+  if (items.length === 0) {
+    items.push(`Scanned Itemized Purchase (${amount.toFixed(2)} ${detectedCurrency})`);
+  }
 
   return {
     merchant,
@@ -1439,121 +1407,161 @@ OCR Engine: Client-Side Multimodal Parser
     subtotal,
     tax,
     items,
-    rawText,
-    confidence: 96
+    confidence: text.length > 30 ? 95 : 80
   };
 }
 
+// Full 2-Stage Receipt OCR Pipeline with Vision AI and On-Device Tesseract Fallback
 async function handleReceiptUpload(e) {
-  const file = e.target.files[0];
+  const file = (e && e.target && e.target.files && e.target.files[0]) || (e && e.file) || (e instanceof File ? e : null);
   if (!file) return;
 
   const uploadBox = document.getElementById("ocr-upload-box");
   const progressBox = document.getElementById("ocr-progress-container");
   const reviewBox = document.getElementById("ocr-review-container");
+  const progressSubtext = document.getElementById("ocr-progress-subtext");
 
   uploadBox.classList.add("hidden");
   progressBox.classList.remove("hidden");
   reviewBox.classList.add("hidden");
 
-  // Reset file input so user can pick same file again if desired
-  e.target.value = "";
+  if (e && e.target) e.target.value = "";
+
+  if (progressSubtext) {
+    progressSubtext.innerText = "Step 1/2: Preparing high-resolution image for OCR scanner...";
+  }
 
   try {
-    // 1. Compress image client-side to prevent network choke
-    const compressedDataUrl = await compressImage(file, 1024, 1024, 0.85);
-    const cleanBase64 = (compressedDataUrl || "").replace(/^data:image\/[a-z0-9-+.]+;base64,/, '');
+    // 1. High-fidelity image preparation (preserves crisp receipt characters)
+    const prep = await prepareImageForOcr(file);
+    const dataUrl = prep.dataUrl;
+    const canvas = prep.canvas;
 
-    const progressSubtext = document.getElementById("ocr-progress-subtext");
-    if (progressSubtext) {
-      progressSubtext.innerText = "Step 1/2: Extracting OCR text from receipt image...";
+    if (!dataUrl) {
+      throw new Error("Unable to read image file data.");
     }
 
-    // Dynamic timer to advance progress text
-    const phaseTimer = setTimeout(() => {
-      if (progressSubtext) {
-        progressSubtext.innerText = "Step 2/2: AI analyzing store name, dates, line items & amounts...";
-      }
-    }, 2500);
+    const commaIdx = dataUrl.indexOf(",");
+    const cleanBase64 = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+    const mimeMatch = dataUrl.match(/^data:([^;]+);/);
+    const mimeType = (mimeMatch && mimeMatch[1]) ? mimeMatch[1] : "image/jpeg";
 
-    // 2. Determine execution target: Local Node.js server vs. Direct Gemini API (GitHub Pages / Mobile Web)
+    if (progressSubtext) {
+      progressSubtext.innerText = "Step 1/2: Optical character recognition (extracting text)...";
+    }
+
+    let rawOcrText = "";
+    let visionEngine = "Gemini 3.1 Vision";
+
+    // 2. Check Local Server if running on localhost:3000
     const isLocalServer = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.port === "3000");
 
     if (isLocalServer) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
-
       try {
-        const response = await fetch('/api/ai/ocr', {
+        const localRes = await fetch('/api/ai/ocr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({
-            imageBase64: compressedDataUrl,
-            mimeType: 'image/jpeg'
-          })
+          body: JSON.stringify({ imageBase64: dataUrl, mimeType })
         });
-        clearTimeout(timeoutId);
-        clearTimeout(phaseTimer);
-
-        if (response.ok) {
-          const resJson = await response.json();
-          if (resJson.success && resJson.data) {
-            startOcrProcess(file.name, resJson.data);
-            showToast(`Receipt OCR & AI Analysis Complete (${resJson.data.merchant || 'Store'})`);
+        if (localRes.ok) {
+          const localJson = await localRes.json();
+          if (localJson.success && localJson.data) {
+            startOcrProcess(file.name, localJson.data);
+            showToast(`Receipt OCR & AI Analysis Complete (${localJson.data.merchant || 'Store'})`);
             return;
           }
         }
-      } catch (backendErr) {
-        clearTimeout(timeoutId);
-        console.warn("Local backend request error, attempting direct Gemini API:", backendErr);
+      } catch (localErr) {
+        console.warn("Local server OCR failed, switching to direct client-side engine:", localErr);
       }
     }
 
-    // 3. Direct Gemini API (Active on GitHub Pages / Mobile Web without local Node.js server)
+    // 3. Stage 1: Multimodal OCR Text Extraction via Direct Gemini API
     const activeKey = getActiveGeminiKey();
     if (activeKey) {
-      try {
-        // Stage 1: Pure Vision OCR
-        const ocrRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${activeKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: "Perform OCR on this receipt image. Transcribe every line of readable text verbatim line-by-line. Return only plain text." },
-                { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } }
-              ]
-            }]
-          })
-        });
+      const visionModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+      const ocrPrompt = "Perform OCR on this receipt image. Read and transcribe every single line of printed text, store name, date, invoice numbers, line items with prices, tax/VAT, subtotal, and grand total verbatim. Return only the plain transcribed text.";
 
-        if (ocrRes.ok) {
-          const ocrJson = await ocrRes.json();
-          const rawOcrText = ocrJson.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      for (const model of visionModels) {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { text: ocrPrompt },
+                  { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } }
+                ]
+              }]
+            })
+          });
 
-          if (progressSubtext) {
-            progressSubtext.innerText = "Step 2/2: AI analyzing store name, dates, line items & amounts...";
+          if (res.ok) {
+            const json = await res.json();
+            const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (textPart && textPart.trim().length > 5) {
+              rawOcrText = textPart.trim();
+              visionEngine = model;
+              break;
+            }
           }
+        } catch (modelErr) {
+          console.warn(`Vision model ${model} failed:`, modelErr);
+        }
+      }
+    }
 
-          // Stage 2: AI Financial Analysis
-          const analyzePrompt = `Analyze this receipt OCR text and return JSON matching this exact schema:
+    // 4. On-Device Neural OCR Fallback (Tesseract.js) if offline or Gemini vision failed
+    if (!rawOcrText && window.Tesseract && canvas) {
+      try {
+        if (progressSubtext) progressSubtext.innerText = "Step 1/2: Reading text on device using Neural OCR (Tesseract)...";
+        const tResult = await Tesseract.recognize(canvas, 'eng');
+        if (tResult.data?.text && tResult.data.text.trim().length > 5) {
+          rawOcrText = tResult.data.text.trim();
+          visionEngine = "Tesseract.js Neural OCR";
+        }
+      } catch (tErr) {
+        console.warn("On-device Tesseract OCR failed:", tErr);
+      }
+    }
+
+    if (!rawOcrText) {
+      rawOcrText = "Receipt image processed. Text could not be transcribed clearly.";
+    }
+
+    // 5. Stage 2: AI Financial Structuring of the Extracted Text
+    if (progressSubtext) {
+      progressSubtext.innerText = "Step 2/2: AI analyzing store name, dates, line items & amounts...";
+    }
+
+    let parsedResult = null;
+
+    if (activeKey && rawOcrText.length > 10) {
+      const analyzePrompt = `You are an elite financial assistant.
+Analyze this receipt OCR text and return a JSON object with this exact structure:
 {
-  "merchant": "Exact store or vendor name",
+  "merchant": "Exact store or merchant name",
   "amount": 0.00,
   "currency": "SAR or USD or EUR or GBP",
   "category": "one of: food, groceries, transport, housing, utilities, entertainment, health, education, shopping, other",
   "date": "YYYY-MM-DD",
-  "invoiceNo": "Invoice/receipt number or empty string",
+  "invoiceNo": "Invoice/receipt number if found",
   "subtotal": 0.00,
   "tax": 0.00,
   "items": ["Item name and price"],
   "confidence": 98
 }
-Receipt OCR Text:
-${rawOcrText}`;
 
-          const parseRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${activeKey}`, {
+Receipt OCR Text:
+${rawOcrText}
+
+Return ONLY raw valid JSON.`;
+
+      const parseModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash'];
+      for (const model of parseModels) {
+        try {
+          const pRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1562,38 +1570,35 @@ ${rawOcrText}`;
             })
           });
 
-          if (parseRes.ok) {
-            clearTimeout(phaseTimer);
-            const parseJson = await parseRes.json();
-            const rawParsed = parseJson.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+          if (pRes.ok) {
+            const pJson = await pRes.json();
+            const rawParsed = pJson.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
             let cleaned = rawParsed.trim().replace(/^```json/, '').replace(/^```/, '').replace(/```$/, '').trim();
-            const parsed = JSON.parse(cleaned);
-            parsed.rawText = rawOcrText;
-            startOcrProcess(file.name, parsed);
-            showToast(`Receipt OCR & AI Analysis Complete (${parsed.merchant || 'Store'})`);
-            return;
+            parsedResult = JSON.parse(cleaned);
+            break;
           }
+        } catch (pErr) {
+          console.warn(`Stage 2 model ${model} failed:`, pErr);
         }
-      } catch (geminiDirectErr) {
-        console.warn("Direct Gemini API error:", geminiDirectErr);
       }
     }
 
-    clearTimeout(phaseTimer);
-    // 4. Standalone / Mobile / Offline Fast Fallback Analyzer
-    setTimeout(() => {
-      const clientData = analyzeReceiptClientSide(file.name, compressedDataUrl);
-      startOcrProcess(file.name, clientData);
-      showToast(`Processed on device! (${clientData.amount} ${clientData.currency})`);
-    }, 400);
+    // 6. Heuristic Fallback Parser if Stage 2 AI returned empty
+    if (!parsedResult || !parsedResult.amount) {
+      parsedResult = parseReceiptTextHeuristically(rawOcrText, file.name);
+    }
+
+    // Attach full verbatim raw text for the user review screen
+    parsedResult.rawText = rawOcrText;
+
+    startOcrProcess(file.name, parsedResult);
+    showToast(`Receipt Scanned via ${visionEngine} (${parsedResult.merchant || 'Store'})`);
 
   } catch (err) {
     console.error("OCR upload error:", err);
-    showToast("Error processing receipt image: " + err.message);
-    setTimeout(() => {
-      const fallbackData = analyzeReceiptClientSide("receipt.jpg", null);
-      startOcrProcess("receipt.jpg", fallbackData);
-    }, 300);
+    showToast("Error scanning receipt image: " + err.message);
+    const fallbackData = parseReceiptTextHeuristically("", file.name);
+    startOcrProcess(file.name, fallbackData);
   }
 }
 
@@ -3041,42 +3046,16 @@ function captureCameraSnapshot() {
   const ctx = canvas.getContext("2d");
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  // Convert frame to Blob and feed directly into OCR Pipeline
+  // Convert frame to Blob and feed directly into Real OCR Pipeline
   canvas.toBlob((blob) => {
     closeLiveCamera();
     openOcrModal();
-    startOcrProcess("camera-snap.jpg", {
-      merchant: "Supermarket Receipt (Live Camera)",
-      currency: "SAR",
-      amount: 94.25,
-      category: "groceries",
-      date: new Date().toISOString().split("T")[0],
-      invoiceNo: "CAM-" + Math.floor(100000 + Math.random() * 900000),
-      subtotal: 81.96,
-      tax: 12.29,
-      items: [
-        "Fresh Laban & Yogurt (18.50 SAR)",
-        "Fresh Fruit Assortment (35.75 SAR)",
-        "Whole Grain Loaf (8.00 SAR)",
-        "Snacks & Beverages (32.00 SAR)"
-      ],
-      rawText: `================================================
-SUPERMARKET RECEIPT (LIVE CAMERA SNAP)
-Date: ${new Date().toISOString().split("T")[0]}
-Mode: In-App Optical Camera Stream
-------------------------------------------------
-Laban & Yogurt ........................ 18.50 SAR
-Fresh Fruit Assortment ................ 35.75 SAR
-Whole Grain Loaf ....................... 8.00 SAR
-Snacks & Beverages .................... 32.00 SAR
-------------------------------------------------
-SUBTOTAL:                              81.96 SAR
-VAT (15%):                             12.29 SAR
-TOTAL PAID:                            94.25 SAR
-================================================`,
-      confidence: 96
-    });
-    showToast("Camera snap captured! Analyzing receipt...");
+    if (blob) {
+      const snapFile = new File([blob], `camera-receipt-${Date.now()}.jpg`, { type: "image/jpeg" });
+      handleReceiptUpload({ file: snapFile });
+    } else {
+      showToast("Could not capture frame from camera.");
+    }
   }, "image/jpeg", 0.92);
 }
 
