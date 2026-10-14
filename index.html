@@ -935,16 +935,22 @@
 
         <!-- Sample Quick Receipts Buttons for Easy Demo -->
         <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
-          <p class="text-[11px] font-semibold text-slate-500 mb-2">Or test instant sample receipt:</p>
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-[11px] font-semibold text-slate-500">Quick Test Sample Receipts:</p>
+            <span class="text-[10px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950 px-2 py-0.5 rounded">USD ➔ SAR Auto-Convert</span>
+          </div>
           <div class="flex flex-wrap gap-2">
-            <button onclick="testSampleReceipt('panda')" class="px-2.5 py-1 bg-white dark:bg-slate-800 border rounded text-[11px] font-medium hover:border-brand-500">
-              🛒 Panda Supermarket (75.50 SAR)
+            <button type="button" onclick="testSampleReceipt('amazon_usd')" class="px-2.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-300 dark:border-amber-700 rounded-lg text-[11px] font-bold text-amber-900 dark:text-amber-200 hover:border-amber-500 flex items-center space-x-1 shadow-sm">
+              <span>💻 Amazon US ($50.00 USD ➔ 187.50 SAR)</span>
             </button>
-            <button onclick="testSampleReceipt('jarir')" class="px-2.5 py-1 bg-white dark:bg-slate-800 border rounded text-[11px] font-medium hover:border-brand-500">
+            <button type="button" onclick="testSampleReceipt('starbucks_usd')" class="px-2.5 py-1.5 bg-white dark:bg-slate-800 border rounded-lg text-[11px] font-medium hover:border-brand-500">
+              ☕ Starbucks ($12.00 USD)
+            </button>
+            <button type="button" onclick="testSampleReceipt('panda')" class="px-2.5 py-1.5 bg-white dark:bg-slate-800 border rounded-lg text-[11px] font-medium hover:border-brand-500">
+              🛒 Panda Supermarket (115.00 SAR)
+            </button>
+            <button type="button" onclick="testSampleReceipt('jarir')" class="px-2.5 py-1.5 bg-white dark:bg-slate-800 border rounded-lg text-[11px] font-medium hover:border-brand-500">
               📚 Jarir Bookstore (189.00 SAR)
-            </button>
-            <button onclick="testSampleReceipt('fuel')" class="px-2.5 py-1 bg-white dark:bg-slate-800 border rounded text-[11px] font-medium hover:border-brand-500">
-              ⛽ SASCO Fuel (65.00 SAR)
             </button>
           </div>
         </div>
@@ -959,7 +965,7 @@
               <p class="font-bold text-indigo-900 dark:text-indigo-200 text-xs">Gemini Multimodal AI Analyzing Receipt...</p>
               <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white">Vision AI</span>
             </div>
-            <p id="ocr-progress-subtext" class="text-indigo-600 dark:text-indigo-400 text-[11px] mt-0.5">Reading merchant, amounts, items, and tax breakdown...</p>
+            <p id="ocr-progress-subtext" class="text-indigo-600 dark:text-indigo-400 text-[11px] mt-0.5">Reading currency, merchant, amounts, items, and tax breakdown...</p>
           </div>
         </div>
 
@@ -968,19 +974,57 @@
           <div class="p-2.5 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 flex items-center justify-between text-[11px] text-indigo-900 dark:text-indigo-300">
             <div class="flex items-center space-x-2">
               <i data-lucide="sparkles" class="w-4 h-4 text-indigo-500"></i>
-              <span><strong>Gemini Vision Extraction:</strong> <span id="ocr-ai-confidence">96% confidence</span></span>
+              <span><strong>Gemini Vision Extraction:</strong> <span id="ocr-ai-confidence">98% confidence</span></span>
             </div>
             <span class="text-[10px] font-mono bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">Verified</span>
           </div>
 
-          <div class="grid grid-cols-2 gap-2">
+          <!-- Currency Detection & Conversion Live Banner -->
+          <div id="ocr-currency-conversion-banner" class="p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/50 border border-emerald-200 dark:border-emerald-800 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-emerald-900 dark:text-emerald-200 text-xs flex items-center">
+                <i data-lucide="arrow-left-right" class="w-3.5 h-3.5 mr-1 text-emerald-600"></i> Currency Auto-Conversion
+              </span>
+              <span id="ocr-rate-formula-badge" class="text-[10px] font-mono bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 font-bold">
+                1 USD = 3.75 SAR
+              </span>
+            </div>
+            <div class="flex items-center justify-between pt-1">
+              <div>
+                <span class="text-[10px] text-slate-500 block">Original Receipt Total</span>
+                <span id="ocr-disp-orig-total" class="font-extrabold text-sm text-slate-800 dark:text-slate-100">50.00 USD</span>
+              </div>
+              <i data-lucide="arrow-right" class="w-4 h-4 text-emerald-600"></i>
+              <div class="text-right">
+                <span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">Converted System Amount</span>
+                <span id="ocr-disp-conv-total" class="font-extrabold text-base text-emerald-600 dark:text-emerald-400">187.50 SAR</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Input Fields Grid -->
+          <div class="grid grid-cols-2 gap-2.5">
             <div>
               <label class="font-semibold block mb-0.5">Detected Merchant</label>
               <input type="text" id="ocr-res-merchant" class="w-full px-2.5 py-1.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
             </div>
             <div>
-              <label class="font-semibold block mb-0.5">Detected Total Amount</label>
-              <input type="number" step="0.01" id="ocr-res-amount" class="w-full px-2.5 py-1.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold">
+              <label class="font-semibold block mb-0.5">Receipt Currency</label>
+              <select id="ocr-res-currency" onchange="recalculateOcrCurrency()" class="w-full px-2.5 py-1.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-brand-600">
+                <option value="SAR">SAR (Saudi Riyal)</option>
+                <option value="USD">USD (US Dollar $)</option>
+                <option value="EUR">EUR (Euro €)</option>
+                <option value="GBP">GBP (British Pound £)</option>
+                <option value="AED">AED (UAE Dirham)</option>
+              </select>
+            </div>
+            <div>
+              <label class="font-semibold block mb-0.5">Original Scanned Total</label>
+              <input type="number" step="0.01" id="ocr-res-amount" oninput="recalculateOcrCurrency()" class="w-full px-2.5 py-1.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold">
+            </div>
+            <div>
+              <label class="font-semibold block mb-0.5">Converted Amount (In <span class="currency-symbol">SAR</span>)</label>
+              <input type="number" step="0.01" id="ocr-res-converted-amount" class="w-full px-2.5 py-1.5 rounded border border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-extrabold">
             </div>
             <div>
               <label class="font-semibold block mb-0.5">Suggested Category</label>
@@ -994,17 +1038,127 @@
             </div>
           </div>
 
-          <!-- Detected Line Items (If any) -->
-          <div id="ocr-items-container" class="hidden p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-            <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Detected Line Items:</span>
-            <ul id="ocr-items-list" class="text-[11px] space-y-0.5 text-slate-700 dark:text-slate-300"></ul>
+          <!-- Detected Line Items & Raw Text Accordion -->
+          <div class="space-y-2 pt-1">
+            <div id="ocr-items-container" class="hidden p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Detected Line Items & Subtotals:</span>
+              <ul id="ocr-items-list" class="text-[11px] space-y-0.5 text-slate-700 dark:text-slate-300"></ul>
+            </div>
+
+            <!-- Toggle Raw OCR Text Preview -->
+            <details class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-2.5">
+              <summary class="font-bold text-slate-700 dark:text-slate-300 cursor-pointer flex items-center justify-between text-xs">
+                <span>View Raw Scanned OCR Text</span>
+                <span class="text-[10px] text-brand-600 font-normal">Click to expand</span>
+              </summary>
+              <pre id="ocr-res-raw-text" class="mt-2 p-2.5 bg-slate-900 text-emerald-400 font-mono text-[10px] rounded-lg overflow-x-auto whitespace-pre-wrap leading-tight max-h-40"></pre>
+            </details>
           </div>
 
-          <button onclick="confirmOcrTransaction()" class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold rounded-lg shadow transition">
+          <button onclick="confirmOcrTransaction()" class="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition">
             Confirm & Save to Budget
           </button>
         </div>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- 2B. DETAILED RECEIPT & RAW OCR AUDIT MODAL (Opens when clicking any OCR transaction) -->
+  <div id="modal-receipt-details" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+      <!-- Modal Header -->
+      <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+        <div class="flex items-center space-x-2">
+          <div class="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 flex items-center justify-center">
+            <i data-lucide="receipt" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 id="rc-modal-merchant" class="font-bold text-slate-900 dark:text-white text-sm">Receipt Details</h3>
+            <p id="rc-modal-subtitle" class="text-[11px] text-slate-400">Invoice Audit & OCR Breakdown</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-receipt-details')" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Scrollable) -->
+      <div class="p-5 overflow-y-auto space-y-4 text-xs flex-1">
+        
+        <!-- Currency & Amount Card -->
+        <div id="rc-conversion-card" class="p-3.5 rounded-xl bg-gradient-to-r from-brand-50 to-indigo-50 dark:from-brand-950/40 dark:to-indigo-950/40 border border-brand-200 dark:border-brand-800 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300">Financial Value</span>
+            <span id="rc-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">OCR Verified</span>
+          </div>
+          <div class="flex items-baseline justify-between">
+            <div>
+              <span class="text-[11px] text-slate-500 block">Original Invoiced Total:</span>
+              <span id="rc-original-total" class="font-extrabold text-lg text-slate-900 dark:text-white">50.00 USD</span>
+            </div>
+            <div class="text-right">
+              <span class="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold block">Stored Budget Amount:</span>
+              <span id="rc-stored-total" class="font-extrabold text-xl text-emerald-600 dark:text-emerald-400">187.50 SAR</span>
+            </div>
+          </div>
+          <p id="rc-rate-notice" class="text-[11px] text-slate-600 dark:text-slate-400 pt-1 border-t border-brand-200/60 dark:border-brand-800/60 flex items-center">
+            <i data-lucide="info" class="w-3.5 h-3.5 mr-1 text-brand-600"></i>
+            <span>Converted at rate: <strong>1 USD = 3.75 SAR</strong></span>
+          </p>
+        </div>
+
+        <!-- Receipt Metadata Grid -->
+        <div class="grid grid-cols-2 gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-[11px]">
+          <div>
+            <span class="text-slate-400 block font-medium">Invoice / Receipt #:</span>
+            <span id="rc-invoice-no" class="font-bold text-slate-800 dark:text-slate-200">INV-2026-98124</span>
+          </div>
+          <div>
+            <span class="text-slate-400 block font-medium">Date & Time:</span>
+            <span id="rc-date" class="font-bold text-slate-800 dark:text-slate-200">2026-09-15 11:20</span>
+          </div>
+          <div>
+            <span class="text-slate-400 block font-medium">Payment Method:</span>
+            <span id="rc-payment-method" class="font-bold text-slate-800 dark:text-slate-200">Mada / Visa (*9912)</span>
+          </div>
+          <div>
+            <span class="text-slate-400 block font-medium">VAT / Tax:</span>
+            <span id="rc-tax" class="font-bold text-slate-800 dark:text-slate-200">15.00 SAR</span>
+          </div>
+        </div>
+
+        <!-- Itemized Items List -->
+        <div>
+          <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1.5 flex items-center">
+            <i data-lucide="shopping-bag" class="w-3.5 h-3.5 mr-1 text-slate-400"></i> Itemized Line Items
+          </h4>
+          <div id="rc-items-list" class="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- Full Raw OCR Extracted Text Box -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <h4 class="font-bold text-slate-800 dark:text-slate-200 flex items-center">
+              <i data-lucide="file-code" class="w-3.5 h-3.5 mr-1 text-slate-400"></i> Raw Scanned OCR Stream
+            </h4>
+            <button onclick="copyRawOcrText()" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-brand-600 dark:text-brand-400 hover:bg-slate-200 flex items-center space-x-1">
+              <i data-lucide="copy" class="w-3 h-3"></i>
+              <span>Copy Raw Text</span>
+            </button>
+          </div>
+          <pre id="rc-raw-text-box" class="p-3 bg-slate-950 text-emerald-400 font-mono text-[10px] rounded-xl overflow-x-auto whitespace-pre-wrap leading-relaxed border border-slate-800 max-h-48"></pre>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+        <button onclick="closeModal('modal-receipt-details')" class="px-4 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold hover:bg-brand-700">
+          Close Inspector
+        </button>
       </div>
     </div>
   </div>

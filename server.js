@@ -183,12 +183,16 @@ const server = http.createServer(async (req, res) => {
 Carefully examine the receipt image.
 Extract the transaction details into valid JSON matching this schema:
 {
-  "merchant": "Name of the merchant, supermarket, or service (e.g. 'Panda Supermarket', 'Jarir Bookstore')",
+  "merchant": "Name of the merchant, supermarket, or service (e.g. 'Panda Supermarket', 'Amazon', 'Jarir Bookstore')",
   "amount": 0.00, // Total receipt amount as a float number
-  "currency": "SAR", // Currency symbol or code, default to SAR
+  "currency": "USD or SAR or EUR or GBP", // Detected currency on receipt. Look for $, USD, SAR, SR, ر.س, €, £. If USD is indicated, set 'USD'. If not indicated, default to 'SAR'.
   "category": "one of: food, groceries, transport, housing, utilities, entertainment, health, education, shopping, other",
-  "date": "YYYY-MM-DD", // Date of purchase. If year is missing or 2-digit, normalize to 2026. If date is not found, use 2026-09-17.
-  "items": ["list", "of", "purchased", "items"],
+  "date": "YYYY-MM-DD", // Date of purchase. If year is missing or 2-digit, normalize to 2026. If date is not found, use current date.
+  "invoiceNo": "Invoice / receipt number or order reference code if visible",
+  "subtotal": 0.00, // Pre-tax subtotal if visible
+  "tax": 0.00, // VAT or sales tax amount if visible
+  "items": ["list of purchased items with prices if visible"],
+  "rawText": "Full literal OCR transcript of all readable text on the receipt, line by line.",
   "confidence": 95 // integer 70-99 indicating certainty
 }
 Return ONLY valid raw JSON with no extra markdown or explanations.`;
