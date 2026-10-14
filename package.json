@@ -1,0 +1,19 @@
+{
+  "name": "super-budgeting-system",
+  "version": "1.0.0",
+  "description": "Super Budgeting System (SBS) - Web-Based Personal Financial Management System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "budgeting",
+    "personal-finance",
+    "ocr",
+    "voice",
+    "financial-management",
+    "software-engineering"
+  ],
+  "author": "Super Budgeting Team",
+  "license": "MIT"
+}

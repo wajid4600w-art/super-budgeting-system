@@ -1,0 +1,4 @@
+cloudflared.exe
+create_repo.ps1
+node_modules/
+*.log
