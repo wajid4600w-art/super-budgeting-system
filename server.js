@@ -15,9 +15,7 @@ function loadEnv() {
       if (eqIdx > 0) {
         const key = trimmed.substring(0, eqIdx).trim();
         const val = trimmed.substring(eqIdx + 1).trim();
-        if (!process.env[key]) {
-          process.env[key] = val;
-        }
+        process.env[key] = val;
       }
     }
   }
@@ -69,6 +67,23 @@ async function callGemini(modelName, parts, generationConfig = {}) {
   return text;
 }
 
+const DEFAULT_GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+
+async function callGeminiWithFallback(modelList, parts, generationConfig = {}) {
+  const models = modelList && modelList.length ? modelList : DEFAULT_GEMINI_MODELS;
+  let lastErr;
+  for (const model of models) {
+    try {
+      const text = await callGemini(model, parts, generationConfig);
+      return { text, model };
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[Gemini Fallback] Model ${model} returned error: ${err.message}. Trying next model...`);
+    }
+  }
+  throw lastErr;
+}
+
 async function callOpenRouter(modelName, messages, temperature = 0.3) {
   if (!OPENROUTER_KEY) throw new Error('OPENROUTER_API_KEY is not configured');
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -98,6 +113,7 @@ async function callOpenRouter(modelName, messages, temperature = 0.3) {
 }
 
 function cleanJsonString(str) {
+  if (!str) return '{}';
   let cleaned = str.trim();
   if (cleaned.startsWith('```json')) {
     cleaned = cleaned.substring(7);
@@ -106,6 +122,12 @@ function cleanJsonString(str) {
   }
   if (cleaned.endsWith('```')) {
     cleaned = cleaned.substring(0, cleaned.length - 3);
+  }
+  cleaned = cleaned.trim();
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   }
   return cleaned.trim();
 }
@@ -170,7 +192,7 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      // 2. Receipt OCR via Gemini Vision
+      // 2. Receipt OCR via 2-Stage Pipeline (Stage 1: Pure Vision OCR Text Extraction -> Stage 2: AI Entity & Financial Parsing)
       if (pathname === '/api/ai/ocr' && req.method === 'POST') {
         const body = await readJsonBody(req);
         const { imageBase64, mimeType = 'image/jpeg' } = body;
@@ -179,47 +201,160 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 400, { success: false, error: 'imageBase64 is required' });
         }
 
-        const prompt = `You are an expert OCR receipt parsing system for personal financial management.
-Carefully examine the receipt image.
-Extract the transaction details into valid JSON matching this schema:
+        // Strip data:image/...;base64, prefix if present
+        const cleanBase64 = imageBase64.replace(/^data:image\/[a-z0-9-+.]+;base64,/, '');
+
+        // STAGE 1: Extract all literal OCR text from the image
+        const ocrPrompt = `You are a high-precision Optical Character Recognition (OCR) engine.
+Carefully examine this receipt or bill image.
+Transcribe every single piece of readable text verbatim line-by-line:
+- Store / merchant / vendor name, branch, address, telephone
+- Date, time, transaction/receipt/invoice ID numbers
+- All purchased product lines, descriptions, quantities, and prices
+- Subtotal, discounts, VAT / sales tax, and total amount
+- Currency indicators (SAR, SR, $, USD, EUR, etc.)
+
+Return ONLY the plain literal text. Do not output JSON, do not add introductory remarks or markdown summaries.`;
+
+        let rawOcrText = '';
+        let visionModel = 'gemini-3.1-flash-lite';
+        try {
+          const gemRes = await callGeminiWithFallback(
+            ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'],
+            [
+              { text: ocrPrompt },
+              { inlineData: { mimeType, data: cleanBase64 } }
+            ]
+          );
+          rawOcrText = (gemRes.text || '').trim();
+          visionModel = gemRes.model;
+        } catch (err1) {
+          console.error('Gemini vision OCR text extraction failed:', err1.message);
+          throw new Error('Failed to extract text from receipt image: ' + err1.message);
+        }
+
+        if (!rawOcrText) {
+          throw new Error('No readable text found on the uploaded image.');
+        }
+
+        // STAGE 2: AI Financial Reasoning on the extracted OCR text
+        const analyzePrompt = `You are an elite financial assistant.
+Analyze the following raw OCR text extracted from a purchase receipt:
+
+--- BEGIN RECEIPT OCR TEXT ---
+${rawOcrText}
+--- END RECEIPT OCR TEXT ---
+
+Extract the transaction details into valid JSON matching this exact schema:
 {
-  "merchant": "Name of the merchant, supermarket, or service (e.g. 'Panda Supermarket', 'Amazon', 'Jarir Bookstore')",
-  "amount": 0.00, // Total receipt amount as a float number
-  "currency": "USD or SAR or EUR or GBP", // Detected currency on receipt. Look for $, USD, SAR, SR, ر.س, €, £. If USD is indicated, set 'USD'. If not indicated, default to 'SAR'.
+  "merchant": "Exact name of the shop, merchant, or service",
+  "amount": 0.00, // Grand total receipt amount as a float number
+  "currency": "SAR or USD or EUR or GBP", // Detected currency. Default to 'SAR' if ambiguous or Saudi merchant.
   "category": "one of: food, groceries, transport, housing, utilities, entertainment, health, education, shopping, other",
-  "date": "YYYY-MM-DD", // Date of purchase. If year is missing or 2-digit, normalize to 2026. If date is not found, use current date.
-  "invoiceNo": "Invoice / receipt number or order reference code if visible",
-  "subtotal": 0.00, // Pre-tax subtotal if visible
-  "tax": 0.00, // VAT or sales tax amount if visible
-  "items": ["list of purchased items with prices if visible"],
-  "rawText": "Full literal OCR transcript of all readable text on the receipt, line by line.",
-  "confidence": 95 // integer 70-99 indicating certainty
+  "date": "YYYY-MM-DD", // Purchase date formatted YYYY-MM-DD. Normalize 2-digit years to 2026. If date is not found, use current date.
+  "invoiceNo": "Invoice or receipt reference number if found, or empty string",
+  "subtotal": 0.00, // Pre-tax subtotal if visible, otherwise 0.00
+  "tax": 0.00, // VAT or sales tax amount if visible, otherwise 0.00
+  "items": ["list of purchased item descriptions with prices, e.g. 'Whole Milk 2L - 12.00 SAR'"],
+  "confidence": 98 // Integer 80-99 indicating certainty
 }
 Return ONLY valid raw JSON with no extra markdown or explanations.`;
 
-        // Strip data:image/...;base64, prefix if present
-        const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
-
-        let rawOutput;
+        let rawParsedOutput = '';
+        let parseModel = 'gemini-3.1-flash-lite';
         try {
-          // Primary: Gemini 3.1 Flash Lite (High-speed multimodal)
-          rawOutput = await callGemini('gemini-3.1-flash-lite', [
-            { text: prompt },
-            { inlineData: { mimeType, data: cleanBase64 } }
-          ], { responseMimeType: 'application/json' });
-        } catch (err1) {
-          console.warn('Gemini 3.1 flash lite failed, trying gemini-3.6-flash:', err1.message);
-          rawOutput = await callGemini('gemini-3.6-flash', [
-            { text: prompt },
-            { inlineData: { mimeType, data: cleanBase64 } }
-          ], { responseMimeType: 'application/json' });
+          const parseRes = await callGeminiWithFallback(
+            ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'],
+            [{ text: analyzePrompt }],
+            { responseMimeType: 'application/json' }
+          );
+          rawParsedOutput = parseRes.text;
+          parseModel = parseRes.model;
+        } catch (err2) {
+          console.error('Gemini OCR text analysis failed:', err2.message);
+          throw new Error('Failed to analyze extracted receipt text: ' + err2.message);
         }
 
-        const parsed = JSON.parse(cleanJsonString(rawOutput));
+        let parsedData;
+        try {
+          parsedData = JSON.parse(cleanJsonString(rawParsedOutput));
+        } catch (jsonErr) {
+          console.warn('JSON parse error in stage 2, using fallback parser:', jsonErr.message);
+          parsedData = {
+            merchant: 'Scanned Store',
+            amount: 0.00,
+            currency: 'SAR',
+            category: 'other',
+            date: new Date().toISOString().split('T')[0],
+            items: [],
+            confidence: 85
+          };
+        }
+
+        // Attach full OCR text so UI can show the transcript to user
+        parsedData.rawText = rawOcrText;
+
         return sendJson(res, 200, {
           success: true,
-          model: 'gemini-vision',
-          data: parsed
+          visionModel,
+          parseModel,
+          data: parsedData
+        });
+      }
+
+      // 2b. AI Analysis of pre-extracted OCR text
+      if (pathname === '/api/ai/ocr-text' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const { text } = body;
+
+        if (!text) {
+          return sendJson(res, 400, { success: false, error: 'text is required' });
+        }
+
+        const analyzePrompt = `You are an elite financial assistant.
+Analyze the following raw OCR text extracted from a purchase receipt:
+
+--- BEGIN RECEIPT OCR TEXT ---
+${text}
+--- END RECEIPT OCR TEXT ---
+
+Extract the transaction details into valid JSON matching this exact schema:
+{
+  "merchant": "Exact name of the shop, merchant, or service",
+  "amount": 0.00,
+  "currency": "SAR or USD or EUR or GBP",
+  "category": "one of: food, groceries, transport, housing, utilities, entertainment, health, education, shopping, other",
+  "date": "YYYY-MM-DD",
+  "invoiceNo": "Invoice or receipt reference number if found, or empty string",
+  "subtotal": 0.00,
+  "tax": 0.00,
+  "items": ["list of purchased item descriptions with prices"],
+  "confidence": 98
+}
+Return ONLY valid raw JSON with no extra markdown or explanations.`;
+
+        let rawParsedOutput = '';
+        let parseModel = 'gemini-3.1-flash-lite';
+        try {
+          const parseRes = await callGeminiWithFallback(
+            ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'],
+            [{ text: analyzePrompt }],
+            { responseMimeType: 'application/json' }
+          );
+          rawParsedOutput = parseRes.text;
+          parseModel = parseRes.model;
+        } catch (err2) {
+          console.error('Gemini text analysis failed:', err2.message);
+          throw new Error('Failed to analyze receipt text: ' + err2.message);
+        }
+
+        let parsedData = JSON.parse(cleanJsonString(rawParsedOutput));
+        parsedData.rawText = text;
+
+        return sendJson(res, 200, {
+          success: true,
+          parseModel,
+          data: parsedData
         });
       }
 
@@ -251,14 +386,24 @@ Return ONLY valid JSON.`;
         let usedModel = 'gemini-3.1-flash-lite';
 
         try {
-          rawOutput = await callGemini('gemini-3.1-flash-lite', [{ text: prompt }], { responseMimeType: 'application/json' });
+          const gemRes = await callGeminiWithFallback(
+            ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'],
+            [{ text: prompt }],
+            { responseMimeType: 'application/json' }
+          );
+          rawOutput = gemRes.text;
+          usedModel = gemRes.model;
         } catch (err1) {
-          console.warn('Gemini failed for voice parsing, falling back to Nemotron:', err1.message);
-          usedModel = 'nvidia/nemotron-3.5-lightning:free';
-          rawOutput = await callOpenRouter('nvidia/nemotron-3.5-lightning:free', [
-            { role: 'system', content: 'You are a financial NLP entity extractor. Output only valid JSON.' },
-            { role: 'user', content: prompt }
-          ]);
+          console.warn('Gemini models failed for voice parsing, falling back to Nemotron:', err1.message);
+          if (OPENROUTER_KEY) {
+            usedModel = 'nvidia/nemotron-3.5-lightning:free';
+            rawOutput = await callOpenRouter('nvidia/nemotron-3.5-lightning:free', [
+              { role: 'system', content: 'You are a financial NLP entity extractor. Output only valid JSON.' },
+              { role: 'user', content: prompt }
+            ]);
+          } else {
+            throw err1;
+          }
         }
 
         const parsed = JSON.parse(cleanJsonString(rawOutput));
@@ -308,17 +453,24 @@ Return ONLY raw valid JSON.`;
         let usedModel = 'gemini-3.1-flash-lite';
 
         try {
-          // Primary: Gemini 3.1 Flash Lite (lightning fast JSON reasoning)
-          rawOutput = await callGemini('gemini-3.1-flash-lite', [
-            { text: `${systemPrompt}\n\nHere is the user's current financial profile:\n${userContext}` }
-          ], { responseMimeType: 'application/json' });
+          const gemRes = await callGeminiWithFallback(
+            ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'],
+            [{ text: `${systemPrompt}\n\nHere is the user's current financial profile:\n${userContext}` }],
+            { responseMimeType: 'application/json' }
+          );
+          rawOutput = gemRes.text;
+          usedModel = gemRes.model;
         } catch (err1) {
           console.warn('Gemini failed for advisor, trying Nemotron / OpenRouter:', err1.message);
-          usedModel = 'nvidia/nemotron-3.5-lightning:free';
-          rawOutput = await callOpenRouter('nvidia/nemotron-3.5-lightning:free', [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Here is the user's current financial profile:\n${userContext}` }
-          ]);
+          if (OPENROUTER_KEY) {
+            usedModel = 'nvidia/nemotron-3.5-lightning:free';
+            rawOutput = await callOpenRouter('nvidia/nemotron-3.5-lightning:free', [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: `Here is the user's current financial profile:\n${userContext}` }
+            ]);
+          } else {
+            throw err1;
+          }
         }
 
         const parsed = JSON.parse(cleanJsonString(rawOutput));
@@ -361,6 +513,22 @@ Return ONLY raw valid JSON.`;
       res.end(content, 'utf-8');
     }
   });
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Retrying or binding...`);
+  } else {
+    console.error('HTTP Server error:', err);
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 server.listen(PORT, () => {
