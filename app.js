@@ -2248,7 +2248,6 @@ Return ONLY valid raw JSON.`;
     document.getElementById("voice-res-category").value = category;
     document.getElementById("voice-res-desc").value = desc;
     document.getElementById("voice-status-label").innerText = "Voice recognized (Local Mode)! Review before saving:";
-  }
 }
 
 function confirmVoiceTransaction() {
@@ -2292,7 +2291,8 @@ async function generateAiAdvisorAudit() {
     if (btnText) btnText.innerText = "Analyzing with Nemotron & Gemini...";
   }
 
-  let totalIncome = 0;
+  try {
+    let totalIncome = 0;
   let totalExpenses = 0;
   const categorySpending = {};
 
