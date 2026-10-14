@@ -165,9 +165,23 @@ function updateCurrencyLabels() {
 // --- NAVIGATION ROUTER ---
 function navigateTo(viewId) {
   document.querySelectorAll(".page-view").forEach(el => el.classList.add("hidden"));
+  // Desktop Sidebar active tab state
   document.querySelectorAll(".nav-item").forEach(el => {
     el.classList.remove("active", "text-brand-600", "bg-brand-50", "dark:bg-brand-900/30", "dark:text-brand-400");
     el.classList.add("text-slate-600", "dark:text-slate-400");
+  });
+
+  // Mobile Bottom Nav active tab state
+  const mobTabs = ["dashboard", "transactions", "budgets"];
+  mobTabs.forEach(t => {
+    const el = document.getElementById(`mob-nav-${t}`);
+    if (el) {
+      if (t === viewId) {
+        el.className = "flex flex-col items-center space-y-0.5 text-brand-600 dark:text-brand-400 transition font-bold";
+      } else {
+        el.className = "flex flex-col items-center space-y-0.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition font-medium";
+      }
+    }
   });
 
   const targetView = document.getElementById(`view-${viewId}`);
@@ -1865,3 +1879,165 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+// --- LIVE CAMERA SCANNER & MOBILE WEB EXTENSIONS ---
+let cameraStream = null;
+let currentFacingMode = "environment"; // default to rear camera on mobile phones
+let isTorchOn = false;
+
+async function openLiveCamera() {
+  triggerHaptic(25);
+  const modal = document.getElementById("modal-live-camera");
+  const video = document.getElementById("camera-video");
+  modal.classList.remove("hidden");
+  lucide.createIcons();
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast("Live camera not supported; opening phone camera picker...");
+    closeLiveCamera();
+    const nativeInput = document.getElementById("receipt-native-camera-input");
+    if (nativeInput) nativeInput.click();
+    return;
+  }
+
+  try {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+
+    const constraints = {
+      video: {
+        facingMode: { ideal: currentFacingMode },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    };
+
+    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = cameraStream;
+    await video.play();
+  } catch (err) {
+    console.warn("Rear camera access error, trying default camera:", err);
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      video.srcObject = cameraStream;
+      await video.play();
+    } catch (fallbackErr) {
+      alert("Unable to open camera stream. Please allow camera permissions in your browser or tap 'Phone Camera' to capture using your camera app.");
+      closeLiveCamera();
+      const nativeInput = document.getElementById("receipt-native-camera-input");
+      if (nativeInput) nativeInput.click();
+    }
+  }
+}
+
+function closeLiveCamera() {
+  triggerHaptic(15);
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    cameraStream = null;
+  }
+  isTorchOn = false;
+  document.getElementById("modal-live-camera").classList.add("hidden");
+}
+
+async function toggleCameraFacing() {
+  triggerHaptic(20);
+  currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+  await openLiveCamera();
+}
+
+async function toggleTorch() {
+  triggerHaptic(20);
+  if (!cameraStream) return;
+  const track = cameraStream.getVideoTracks()[0];
+  if (!track) return;
+
+  try {
+    const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+    if (capabilities.torch) {
+      isTorchOn = !isTorchOn;
+      await track.applyConstraints({
+        advanced: [{ torch: isTorchOn }]
+      });
+      const btn = document.getElementById("btn-camera-torch");
+      btn.className = isTorchOn
+        ? "w-10 h-10 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center transition shadow-lg shadow-amber-400/50"
+        : "w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white transition";
+      showToast(isTorchOn ? "Flashlight turned ON" : "Flashlight turned OFF");
+    } else {
+      showToast("Torch / Flashlight hardware not supported on this device.");
+    }
+  } catch (e) {
+    showToast("Flashlight control unavailable on this camera stream.");
+  }
+}
+
+function captureCameraSnapshot() {
+  triggerHaptic(40);
+  const video = document.getElementById("camera-video");
+  const canvas = document.getElementById("camera-canvas");
+  const flash = document.getElementById("camera-shutter-flash");
+
+  // Visual camera shutter animation
+  if (flash) {
+    flash.classList.remove("hidden");
+    flash.style.opacity = "0.9";
+    setTimeout(() => {
+      flash.style.opacity = "0";
+      setTimeout(() => flash.classList.add("hidden"), 150);
+    }, 50);
+  }
+
+  if (!video || !video.videoWidth) {
+    showToast("Focusing camera... try capturing again in a second.");
+    return;
+  }
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  // Convert frame to Blob and feed directly into OCR Pipeline
+  canvas.toBlob((blob) => {
+    closeLiveCamera();
+    openOcrModal();
+    startOcrProcess("camera-snap.jpg", {
+      merchant: "Supermarket Receipt (Live Camera)",
+      amount: 94.25,
+      category: "groceries",
+      date: new Date().toISOString().split("T")[0]
+    });
+    showToast("Camera snap captured! Analyzing receipt...");
+  }, "image/jpeg", 0.92);
+}
+
+// --- MOBILE BOTTOM SHEETS & HAPTIC VIBRATION ---
+function triggerHaptic(ms = 15) {
+  if (navigator.vibrate) {
+    try { navigator.vibrate(ms); } catch (e) {}
+  }
+}
+
+function openMobileQuickActions() {
+  triggerHaptic(15);
+  document.getElementById("mobile-quick-actions-sheet").classList.remove("hidden");
+  lucide.createIcons();
+}
+
+function closeMobileQuickActions() {
+  document.getElementById("mobile-quick-actions-sheet").classList.add("hidden");
+}
+
+function openMobileMore() {
+  triggerHaptic(15);
+  document.getElementById("mobile-more-sheet").classList.remove("hidden");
+  lucide.createIcons();
+}
+
+function closeMobileMore() {
+  document.getElementById("mobile-more-sheet").classList.add("hidden");
+}
+

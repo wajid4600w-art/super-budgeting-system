@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SuperBudget">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>Super Budgeting System (SBS) - Financial Platform</title>
   
   <!-- Tailwind CSS -->
@@ -240,7 +245,7 @@
       </header>
 
       <!-- MAIN SCROLLABLE VIEW CONTAINER -->
-      <main class="flex-1 overflow-y-auto p-6 space-y-6">
+      <main class="flex-1 overflow-y-auto p-4 sm:p-6 pb-28 md:pb-6 space-y-6">
 
         <!-- ==================== SECTION 1: DASHBOARD ==================== -->
         <div id="view-dashboard" class="page-view space-y-6">
@@ -892,12 +897,40 @@
 
       <div class="p-5 space-y-4 text-xs">
 
-        <!-- Upload Drag & Drop Box -->
-        <div id="ocr-upload-box" class="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-6 text-center hover:border-brand-500 transition cursor-pointer" onclick="document.getElementById('receipt-file-input').click()">
+        <!-- Mobile-First Camera & Upload Choice Cards -->
+        <div id="ocr-upload-box" class="space-y-2.5">
+          <!-- Hidden inputs for File and Native Camera -->
           <input type="file" id="receipt-file-input" accept="image/*" class="hidden" onchange="handleReceiptUpload(event)">
-          <i data-lucide="upload-cloud" class="w-10 h-10 text-slate-400 mx-auto mb-2"></i>
-          <p class="font-semibold text-slate-800 dark:text-slate-200">Click to upload receipt photo or drag & drop</p>
-          <p class="text-slate-400 text-[11px] mt-0.5">Supports PNG, JPG, or PDF camera captures</p>
+          <input type="file" id="receipt-native-camera-input" accept="image/*" capture="environment" class="hidden" onchange="handleReceiptUpload(event)">
+
+          <!-- 1. Live Camera Viewfinder (Instant Scanner) -->
+          <button type="button" onclick="openLiveCamera()" class="w-full p-4 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white flex items-center justify-between shadow-lg shadow-brand-500/20 active:scale-[0.98] transition">
+            <div class="flex items-center space-x-3 text-left">
+              <div class="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
+                <i data-lucide="scan" class="w-5 h-5 text-white"></i>
+              </div>
+              <div>
+                <p class="font-bold text-sm leading-tight">Live Camera Scanner</p>
+                <p class="text-[11px] text-brand-100">Open full-screen viewfinder to snap receipt</p>
+              </div>
+            </div>
+            <i data-lucide="chevron-right" class="w-5 h-5 text-white/70"></i>
+          </button>
+
+          <!-- 2. Dual Quick Actions Grid (Native Camera & File Picker) -->
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" onclick="document.getElementById('receipt-native-camera-input').click()" class="p-3 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-brand-500 dark:hover:border-brand-500 bg-slate-50/50 dark:bg-slate-800/40 text-center active:scale-[0.98] transition">
+              <i data-lucide="camera" class="w-6 h-6 text-brand-600 dark:text-brand-400 mx-auto mb-1"></i>
+              <p class="font-bold text-slate-800 dark:text-slate-200 text-xs">Phone Camera</p>
+              <p class="text-[10px] text-slate-400">Launch device camera app</p>
+            </button>
+
+            <button type="button" onclick="document.getElementById('receipt-file-input').click()" class="p-3 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-brand-500 dark:hover:border-brand-500 bg-slate-50/50 dark:bg-slate-800/40 text-center active:scale-[0.98] transition">
+              <i data-lucide="image" class="w-6 h-6 text-indigo-600 dark:text-indigo-400 mx-auto mb-1"></i>
+              <p class="font-bold text-slate-800 dark:text-slate-200 text-xs">Photo Gallery</p>
+              <p class="text-[10px] text-slate-400">Upload existing picture</p>
+            </button>
+          </div>
         </div>
 
         <!-- Sample Quick Receipts Buttons for Easy Demo -->
@@ -1174,10 +1207,244 @@
     </div>
   </div>
 
-  <!-- TOAST NOTIFICATION POPUP -->
-  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 text-xs font-semibold transform translate-y-20 opacity-0 transition-all duration-300 z-50">
-    <i id="toast-icon" data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
-    <span id="toast-msg">Action completed successfully</span>
+  <!-- ==================== MOBILE-FIRST CAMERA & NAVIGATION EXTENSIONS ==================== -->
+
+  <!-- 7. FULL-SCREEN LIVE CAMERA SCANNER VIEWFINDER MODAL -->
+  <div id="modal-live-camera" class="hidden fixed inset-0 z-[100] bg-black text-white flex flex-col justify-between overflow-hidden">
+    <!-- Camera Header Controls -->
+    <div class="p-4 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between z-10">
+      <button type="button" onclick="closeLiveCamera()" class="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white active:scale-95 transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="text-center">
+        <h4 class="font-bold text-sm tracking-wide">Receipt Scanner</h4>
+        <p class="text-[11px] text-slate-300">Align receipt within the frame</p>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <button type="button" id="btn-camera-torch" onclick="toggleTorch()" class="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white active:scale-95 transition" title="Toggle Flashlight">
+          <i data-lucide="zap" class="w-5 h-5"></i>
+        </button>
+        <button type="button" onclick="toggleCameraFacing()" class="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white active:scale-95 transition" title="Flip Camera">
+          <i data-lucide="refresh-ccw" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Center Viewfinder Container with Overlay Guides -->
+    <div class="relative flex-1 flex items-center justify-center overflow-hidden">
+      <!-- Live Video Feed -->
+      <video id="camera-video" playsinline autoplay muted class="absolute inset-0 w-full h-full object-cover"></video>
+
+      <!-- Shutter Flash Effect (Triggered on snap) -->
+      <div id="camera-shutter-flash" class="hidden absolute inset-0 bg-white z-20 transition-opacity duration-200"></div>
+
+      <!-- Receipt Framing Box Guides -->
+      <div class="relative w-[85%] max-w-[340px] h-[70%] max-h-[460px] border-2 border-white/60 rounded-2xl pointer-events-none z-10 shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]">
+        <!-- Corner Reticles -->
+        <div class="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-brand-400 rounded-tl-lg"></div>
+        <div class="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-brand-400 rounded-tr-lg"></div>
+        <div class="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-brand-400 rounded-bl-lg"></div>
+        <div class="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-brand-400 rounded-br-lg"></div>
+
+        <!-- Scanning Laser Line Animation -->
+        <div class="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_8px_#34d399] animate-pulse"></div>
+
+        <div class="absolute bottom-3 left-0 right-0 text-center">
+          <span class="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-[11px] font-semibold text-white/90">
+            Auto-focusing document...
+          </span>
+        </div>
+      </div>
+
+      <!-- Hidden Canvas for frame snapshot -->
+      <canvas id="camera-canvas" class="hidden"></canvas>
+    </div>
+
+    <!-- Camera Bottom Shutter Bar -->
+    <div class="p-6 bg-gradient-to-t from-black/90 to-transparent flex items-center justify-around z-10 pb-8">
+      <!-- Pick from file fallback -->
+      <button type="button" onclick="document.getElementById('receipt-file-input').click(); closeLiveCamera();" class="text-white/80 hover:text-white flex flex-col items-center space-y-1 text-xs">
+        <i data-lucide="image" class="w-6 h-6"></i>
+        <span class="text-[10px]">Gallery</span>
+      </button>
+
+      <!-- Big Capture Shutter Button -->
+      <button type="button" onclick="captureCameraSnapshot()" class="w-20 h-20 rounded-full border-4 border-white p-1 flex items-center justify-center active:scale-90 transition">
+        <div class="w-full h-full bg-white rounded-full shadow-lg"></div>
+      </button>
+
+      <!-- Quick Sample Receipt Demo button -->
+      <button type="button" onclick="testSampleReceipt('panda'); closeLiveCamera();" class="text-white/80 hover:text-white flex flex-col items-center space-y-1 text-xs">
+        <i data-lucide="sparkles" class="w-6 h-6 text-amber-400"></i>
+        <span class="text-[10px]">Demo Slip</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 8. MOBILE BOTTOM NAVIGATION BAR (Visible on <md screens) -->
+  <nav id="mobile-bottom-nav" class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 px-2 py-2 flex items-center justify-around shadow-2xl safe-area-pb">
+    <!-- Nav Item: Dashboard -->
+    <button onclick="navigateTo('dashboard')" id="mob-nav-dashboard" class="flex flex-col items-center space-y-0.5 text-brand-600 dark:text-brand-400 transition">
+      <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+      <span class="text-[10px] font-bold">Home</span>
+    </button>
+
+    <!-- Nav Item: Transactions -->
+    <button onclick="navigateTo('transactions')" id="mob-nav-transactions" class="flex flex-col items-center space-y-0.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition">
+      <i data-lucide="arrow-left-right" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium">Ledger</span>
+    </button>
+
+    <!-- Center Floating Action Button (FAB) for Quick Scanning & Adding -->
+    <div class="relative -top-3">
+      <button onclick="openMobileQuickActions()" class="w-13 h-13 p-3 rounded-full bg-gradient-to-tr from-brand-600 to-indigo-600 text-white shadow-xl shadow-brand-500/40 flex items-center justify-center active:scale-95 transition">
+        <i data-lucide="plus" class="w-6 h-6 stroke-[2.5]"></i>
+      </button>
+    </div>
+
+    <!-- Nav Item: Budgets -->
+    <button onclick="navigateTo('budgets')" id="mob-nav-budgets" class="flex flex-col items-center space-y-0.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition">
+      <i data-lucide="pie-chart" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium">Budgets</span>
+    </button>
+
+    <!-- Nav Item: More Menu Drawer -->
+    <button onclick="openMobileMore()" id="mob-nav-more" class="flex flex-col items-center space-y-0.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition">
+      <i data-lucide="menu" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium">More</span>
+    </button>
+  </nav>
+
+  <!-- 9. MOBILE QUICK ACTIONS BOTTOM SHEET DRAWER -->
+  <div id="mobile-quick-actions-sheet" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end">
+    <!-- Click backdrop to close -->
+    <div class="flex-1" onclick="closeMobileQuickActions()"></div>
+
+    <div class="bg-white dark:bg-slate-900 rounded-t-3xl border-t border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-2xl animate-in slide-in-from-bottom duration-200">
+      <div class="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-1"></div>
+
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-slate-900 dark:text-white text-base">Quick Financial Action</h3>
+        <button onclick="closeMobileQuickActions()" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 text-left">
+        <!-- 1. Live Camera Scanner -->
+        <button onclick="closeMobileQuickActions(); openLiveCamera();" class="p-4 rounded-2xl bg-gradient-to-br from-brand-50 to-indigo-50 dark:from-brand-950/40 dark:to-indigo-950/40 border border-brand-200 dark:border-brand-800/60 active:scale-95 transition">
+          <div class="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center mb-2 shadow-md shadow-brand-500/20">
+            <i data-lucide="scan" class="w-5 h-5"></i>
+          </div>
+          <p class="font-bold text-slate-900 dark:text-white text-xs">Live Camera</p>
+          <p class="text-[10px] text-slate-500">Scan receipt via viewfinder</p>
+        </button>
+
+        <!-- 2. Voice Input -->
+        <button onclick="closeMobileQuickActions(); openVoiceModal();" class="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-200 dark:border-emerald-800/60 active:scale-95 transition">
+          <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center mb-2 shadow-md shadow-emerald-500/20">
+            <i data-lucide="mic" class="w-5 h-5"></i>
+          </div>
+          <p class="font-bold text-slate-900 dark:text-white text-xs">Voice Dictation</p>
+          <p class="text-[10px] text-slate-500">Speak your expense</p>
+        </button>
+
+        <!-- 3. Add Expense -->
+        <button onclick="closeMobileQuickActions(); openTransactionModal(); setTxType('expense');" class="p-4 rounded-2xl bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-950/40 dark:to-pink-950/40 border border-rose-200 dark:border-rose-800/60 active:scale-95 transition">
+          <div class="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center mb-2 shadow-md shadow-rose-500/20">
+            <i data-lucide="minus-circle" class="w-5 h-5"></i>
+          </div>
+          <p class="font-bold text-slate-900 dark:text-white text-xs">Add Expense</p>
+          <p class="text-[10px] text-slate-500">Manual transaction entry</p>
+        </button>
+
+        <!-- 4. Add Income -->
+        <button onclick="closeMobileQuickActions(); openTransactionModal(); setTxType('income');" class="p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-200 dark:border-amber-800/60 active:scale-95 transition">
+          <div class="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center mb-2 shadow-md shadow-amber-500/20">
+            <i data-lucide="plus-circle" class="w-5 h-5"></i>
+          </div>
+          <p class="font-bold text-slate-900 dark:text-white text-xs">Add Income</p>
+          <p class="text-[10px] text-slate-500">Record incoming salary/allowance</p>
+        </button>
+      </div>
+
+      <button onclick="closeMobileQuickActions()" class="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300 text-xs">
+        Cancel
+      </button>
+    </div>
+  </div>
+
+  <!-- 10. MOBILE MORE MENU DRAWER -->
+  <div id="mobile-more-sheet" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end">
+    <div class="flex-1" onclick="closeMobileMore()"></div>
+
+    <div class="bg-white dark:bg-slate-900 rounded-t-3xl border-t border-slate-200 dark:border-slate-800 p-5 space-y-3 shadow-2xl animate-in slide-in-from-bottom duration-200 max-h-[80vh] overflow-y-auto">
+      <div class="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-1"></div>
+
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+        <div>
+          <h3 class="font-bold text-slate-900 dark:text-white text-base">More Features</h3>
+          <p class="text-[11px] text-slate-400">Navigate other system modules</p>
+        </div>
+        <button onclick="closeMobileMore()" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-1 text-sm font-medium">
+        <button onclick="closeMobileMore(); navigateTo('savings');" class="w-full p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-3 text-slate-700 dark:text-slate-200">
+          <div class="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center">
+            <i data-lucide="piggy-bank" class="w-4 h-4"></i>
+          </div>
+          <span class="flex-1 text-left">Savings Goals</span>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+        </button>
+
+        <button onclick="closeMobileMore(); navigateTo('recurring');" class="w-full p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-3 text-slate-700 dark:text-slate-200">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 flex items-center justify-center">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          </div>
+          <span class="flex-1 text-left">Recurring Bills</span>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+        </button>
+
+        <button onclick="closeMobileMore(); navigateTo('reports');" class="w-full p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-3 text-slate-700 dark:text-slate-200">
+          <div class="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <span class="flex-1 text-left">Financial Reports & Statements</span>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+        </button>
+
+        <button onclick="closeMobileMore(); navigateTo('ai-insights');" class="w-full p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-3 text-slate-700 dark:text-slate-200">
+          <div class="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+          </div>
+          <span class="flex-1 text-left">AI Financial Assistant</span>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+        </button>
+
+        <button onclick="closeMobileMore(); openSettingsModal();" class="w-full p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-3 text-slate-700 dark:text-slate-200">
+          <div class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+            <i data-lucide="settings" class="w-4 h-4"></i>
+          </div>
+          <span class="flex-1 text-left">Preferences & Demo Reset</span>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+        </button>
+      </div>
+
+      <div class="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+        <div class="flex items-center space-x-2">
+          <span>Dark Mode:</span>
+          <button onclick="toggleDarkMode()" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300">
+            Toggle
+          </button>
+        </div>
+        <span>SuperBudget Mobile v1.1</span>
+      </div>
+    </div>
   </div>
 
   <!-- Application Logic JavaScript -->
