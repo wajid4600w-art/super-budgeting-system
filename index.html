@@ -814,15 +814,15 @@
   <!-- ==================== MODALS ==================== -->
 
   <!-- 1. MANUAL ADD/EDIT TRANSACTION MODAL -->
-  <div id="modal-transaction" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-      <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+  <div id="modal-transaction" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col my-auto animate-in fade-in zoom-in-95 duration-150">
+      <div class="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
         <h3 id="modal-tx-title" class="font-bold text-slate-900 dark:text-white text-base">Add Financial Record</h3>
         <button onclick="closeModal('modal-transaction')" class="text-slate-400 hover:text-slate-600">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
-      <form id="form-transaction" onsubmit="handleSaveTransaction(event)" class="p-5 space-y-4 text-xs">
+      <form id="form-transaction" onsubmit="handleSaveTransaction(event)" class="p-4 sm:p-5 space-y-4 text-xs overflow-y-auto flex-1 overscroll-contain">
         <input type="hidden" id="tx-edit-id" value="">
         <input type="hidden" id="tx-input-method" value="Manual">
 
@@ -878,9 +878,9 @@
   </div>
 
   <!-- 2. RECEIPT OCR MODAL WITH REVIEW SCREEN -->
-  <div id="modal-ocr" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
-      <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+  <div id="modal-ocr" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col my-auto">
+      <div class="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
         <div class="flex items-center space-x-2">
           <div class="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 flex items-center justify-center">
             <i data-lucide="camera" class="w-4 h-4"></i>
@@ -895,7 +895,7 @@
         </button>
       </div>
 
-      <div class="p-5 space-y-4 text-xs">
+      <div class="p-4 sm:p-5 space-y-4 text-xs overflow-y-auto flex-1 overscroll-contain">
 
         <!-- Mobile-First Camera & Upload Choice Cards -->
         <div id="ocr-upload-box" class="space-y-2.5">
@@ -940,10 +940,10 @@
             <span class="text-[10px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950 px-2 py-0.5 rounded">USD ➔ SAR Auto-Convert</span>
           </div>
           <div class="flex flex-wrap gap-2">
-            <button type="button" onclick="testSampleReceipt('amazon_usd')" class="px-2.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-300 dark:border-amber-700 rounded-lg text-[11px] font-bold text-amber-900 dark:text-amber-200 hover:border-amber-500 flex items-center space-x-1 shadow-sm">
+            <button type="button" onclick="testSampleReceipt('amazon')" class="px-2.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-300 dark:border-amber-700 rounded-lg text-[11px] font-bold text-amber-900 dark:text-amber-200 hover:border-amber-500 flex items-center space-x-1 shadow-sm">
               <span>💻 Amazon US ($50.00 USD ➔ 187.50 SAR)</span>
             </button>
-            <button type="button" onclick="testSampleReceipt('starbucks_usd')" class="px-2.5 py-1.5 bg-white dark:bg-slate-800 border rounded-lg text-[11px] font-medium hover:border-brand-500">
+            <button type="button" onclick="testSampleReceipt('starbucks')" class="px-2.5 py-1.5 bg-white dark:bg-slate-800 border rounded-lg text-[11px] font-medium hover:border-brand-500">
               ☕ Starbucks ($12.00 USD)
             </button>
             <button type="button" onclick="testSampleReceipt('panda')" class="px-2.5 py-1.5 bg-white dark:bg-slate-800 border rounded-lg text-[11px] font-medium hover:border-brand-500">
@@ -1333,8 +1333,8 @@
   </div>
 
   <!-- 6. PREFERENCES & SETTINGS MODAL -->
-  <div id="modal-settings" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-4 text-xs">
+  <div id="modal-settings" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-4 text-xs max-h-[92vh] overflow-y-auto my-auto overscroll-contain">
       <div class="flex items-center justify-between border-b pb-3 border-slate-100 dark:border-slate-800">
         <h3 class="font-bold text-slate-900 dark:text-white text-sm">System & User Settings</h3>
         <button onclick="closeModal('modal-settings')" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -1348,6 +1348,11 @@
           <label class="font-semibold block mb-1">Warning Threshold Percentage (%)</label>
           <input type="number" id="pref-warning-threshold" min="50" max="95" value="80" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
           <p class="text-[11px] text-slate-400 mt-1">Triggers amber budget alerts when spending exceeds this percentage.</p>
+        </div>
+        <div>
+          <label class="font-semibold block mb-1">Google Gemini API Key (Optional for Standalone/Mobile Web)</label>
+          <input type="password" id="pref-gemini-key" placeholder="AIzaSy... (For direct mobile AI)" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+          <p class="text-[11px] text-slate-400 mt-1">Allows real-time Multimodal Vision on any device even without running the local Node server.</p>
         </div>
         <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <button onclick="resetToSampleData()" class="text-xs text-rose-600 hover:underline">
