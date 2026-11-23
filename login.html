@@ -153,6 +153,28 @@
     }
     function clearMsg() { msg.classList.add('hidden'); }
 
+// Countdown cooldown (5-minute lockout after 5 failed attempts)
+let _cooldownTimer = null;
+function startCooldown(seconds) {
+  const until = Date.now() + seconds * 1000;
+  const btns = document.querySelectorAll('#form-login button[type="submit"], #form-recover button[type="submit"]');
+  btns.forEach(b => b.disabled = true);
+  if (_cooldownTimer) clearInterval(_cooldownTimer);
+  const tick = () => {
+    const remain = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+    if (remain <= 0) {
+      clearInterval(_cooldownTimer); _cooldownTimer = null;
+      btns.forEach(b => b.disabled = false);
+      clearMsg();
+      return;
+    }
+    const m = Math.floor(remain / 60), s = remain % 60;
+    showMsg(`Too many failed attempts. Try again in ${m}:${String(s).padStart(2, '0')}.`, false);
+  };
+  tick();
+  _cooldownTimer = setInterval(tick, 1000);
+}
+
     // Tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -183,6 +205,7 @@
       const code = $('login-code').value.trim();
       const res = await post('/api/auth/login', { username, password, code });
       if (res.success) { location.href = '/'; return; }
+      if (res.retryAfter) { startCooldown(res.retryAfter); return; }
       if (res.twoFactor) {
         $('login-code-wrap').classList.remove('hidden');
         showMsg(res.message || 'Enter your authenticator code.', false);
@@ -238,6 +261,7 @@
         newPassword: $('rec-password').value
       });
       if (res.success) { showMsg(res.message, true); }
+      else if (res.retryAfter) { startCooldown(res.retryAfter); }
       else { showMsg(res.error || 'Recovery failed.', false); }
     });
 

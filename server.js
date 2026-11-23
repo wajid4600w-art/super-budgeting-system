@@ -302,14 +302,28 @@ function destroySession(req) {
   if (m) { const s = readSessions(); delete s[m[1]]; writeSessions(s); }
 }
 
-// Simple in-memory rate limiter
+// Simple in-memory rate limiter (counts failed attempts; 5 attempts / 5 minutes)
 const _rateBuckets = {};
-function rateLimited(key, max = 5, windowMs = 15 * 60 * 1000) {
+function ratePeek(key, max = 5, windowMs = 5 * 60 * 1000) {
+  const now = Date.now();
+  const recent = (_rateBuckets[key] || []).filter(t => now - t < windowMs);
+  _rateBuckets[key] = recent;
+  const limited = recent.length > max;
+  const retryAfter = limited && recent.length ? Math.max(1, Math.ceil((recent[0] + windowMs - now) / 1000)) : 0;
+  return { limited, retryAfter };
+}
+function rateHit(key, windowMs = 5 * 60 * 1000) {
   const now = Date.now();
   const recent = (_rateBuckets[key] || []).filter(t => now - t < windowMs);
   recent.push(now);
   _rateBuckets[key] = recent;
-  return recent.length > max;
+}
+function rateClear(key) { delete _rateBuckets[key]; }
+function formatDuration(totalSec) {
+  const s = Math.max(0, Math.floor(totalSec));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 function publicUser(u) {
@@ -738,8 +752,9 @@ Return ONLY raw valid JSON.`;
 
       if (pathname === '/api/auth/login' && req.method === 'POST') {
         const ip = req.socket.remoteAddress || 'unknown';
-        if (rateLimited('login:' + ip, 8, 10 * 60 * 1000)) {
-          return sendJson(res, 429, { success: false, error: 'Too many attempts. Please try again later.' });
+        const rl = ratePeek('login:' + ip, 5, 5 * 60 * 1000);
+        if (rl.limited) {
+          return sendJson(res, 429, { success: false, error: `Too many failed attempts. Try again in ${formatDuration(rl.retryAfter)}.`, retryAfter: rl.retryAfter });
         }
         const body = await readJsonBody(req);
         const username = (body.username || '').trim().toLowerCase();
@@ -747,6 +762,11 @@ Return ONLY raw valid JSON.`;
         const code = (body.code || body.totp || '').trim();
         const user = readUsers().find(u => u.username === username || (u.email && u.email === username));
         if (!user || !verifyPassword(password, user.passwordHash)) {
+          rateHit('login:' + ip, 5 * 60 * 1000);
+          const rl2 = ratePeek('login:' + ip, 5, 5 * 60 * 1000);
+          if (rl2.limited) {
+            return sendJson(res, 429, { success: false, error: `Too many failed attempts. Try again in ${formatDuration(rl2.retryAfter)}.`, retryAfter: rl2.retryAfter });
+          }
           return sendJson(res, 401, { success: false, error: 'Invalid username or password.' });
         }
         if (user.totpSecret) {
@@ -754,9 +774,15 @@ Return ONLY raw valid JSON.`;
             return sendJson(res, 200, { success: false, twoFactor: true, message: 'Enter the 6-digit code from your authenticator app.' });
           }
           if (!verifyTotp(user.totpSecret, code)) {
+            rateHit('login:' + ip, 5 * 60 * 1000);
+            const rl3 = ratePeek('login:' + ip, 5, 5 * 60 * 1000);
+            if (rl3.limited) {
+              return sendJson(res, 429, { success: false, error: `Too many failed attempts. Try again in ${formatDuration(rl3.retryAfter)}.`, retryAfter: rl3.retryAfter });
+            }
             return sendJson(res, 401, { success: false, error: 'Invalid authenticator code.' });
           }
         }
+        rateClear('login:' + ip);
         const sid = createSession(user.id);
         const cookie = `${SESSION_COOKIE}=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`;
         return sendJsonCookie(res, 200, { success: true, user: publicUser(user) }, cookie);
@@ -775,8 +801,9 @@ Return ONLY raw valid JSON.`;
 
       if (pathname === '/api/auth/recover' && req.method === 'POST') {
         const ip = req.socket.remoteAddress || 'unknown';
-        if (rateLimited('recover:' + ip, 5, 15 * 60 * 1000)) {
-          return sendJson(res, 429, { success: false, error: 'Too many attempts. Please try again later.' });
+        const rl = ratePeek('recover:' + ip, 5, 5 * 60 * 1000);
+        if (rl.limited) {
+          return sendJson(res, 429, { success: false, error: `Too many failed attempts. Try again in ${formatDuration(rl.retryAfter)}.`, retryAfter: rl.retryAfter });
         }
         const body = await readJsonBody(req);
         const username = (body.username || '').trim().toLowerCase();
@@ -786,8 +813,14 @@ Return ONLY raw valid JSON.`;
         const users = readUsers();
         const user = users.find(u => u.username === username || (u.email && u.email === username));
         if (!user || !verifyPassword(secretAnswer, user.secretAnswerHash)) {
+          rateHit('recover:' + ip, 5 * 60 * 1000);
+          const rl2 = ratePeek('recover:' + ip, 5, 5 * 60 * 1000);
+          if (rl2.limited) {
+            return sendJson(res, 429, { success: false, error: `Too many failed attempts. Try again in ${formatDuration(rl2.retryAfter)}.`, retryAfter: rl2.retryAfter });
+          }
           return sendJson(res, 401, { success: false, error: 'Incorrect account or secret answer.' });
         }
+        rateClear('recover:' + ip);
         user.passwordHash = hashPassword(newPassword);
         writeUsers(users);
         return sendJson(res, 200, { success: true, message: 'Password has been reset. You can now log in.' });

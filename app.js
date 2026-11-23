@@ -3784,10 +3784,7 @@ function getAccounts() {
   if (stored) {
     try { return JSON.parse(stored); } catch(e) {}
   }
-  return [
-    { id: "acc-1", name: "Sarah Al-Mansoor", email: "sarah@university.edu", currency: "SAR" },
-    { id: "acc-2", name: "Personal Savings", email: "savings@sbs.local", currency: "USD" }
-  ];
+  return [];
 }
 // ===== end getAccounts (L3682) =====
 
