@@ -23,6 +23,7 @@
     };
   </script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <style>
     body { font-family: 'Manrope','Plus Jakarta Sans',system-ui,sans-serif;
       background: radial-gradient(circle at 15% 15%, rgba(129,140,248,0.10), transparent 45%),
@@ -127,9 +128,12 @@
     <!-- TOTP setup (shown after registration) -->
     <div id="totp-setup" class="hidden space-y-3">
       <div class="text-sm font-bold text-lime-300">Account created! Set up your authenticator app.</div>
-      <p class="text-xs text-slate-400">Open Google Authenticator / Authy and add a key manually, then enter the 6-digit code when you log in.</p>
+      <p class="text-xs text-slate-400">Scan this QR code with Google Authenticator / Authy (or enter the key manually), then enter the 6-digit code when you log in.</p>
+      <div class="flex justify-center">
+        <div id="totp-qr" class="bg-white p-2 rounded-lg inline-block"></div>
+      </div>
       <div class="bg-[#18171C] border border-[#2D2C35] rounded-lg p-3">
-        <p class="text-[10px] uppercase text-slate-500 font-bold mb-1">Secret Key</p>
+        <p class="text-[10px] uppercase text-slate-500 font-bold mb-1">Or enter this key manually</p>
         <p id="totp-secret" class="text-sm font-mono break-all text-lime-200"></p>
       </div>
       <a id="totp-uri" href="#" class="block text-center text-xs gloss font-bold py-2 rounded-lg">Open in Authenticator</a>
@@ -203,6 +207,18 @@
       if (!res.success) { showMsg(res.error || 'Registration failed.', false); return; }
       $('totp-secret').textContent = res.totp.secret;
       $('totp-uri').href = res.totp.otpauth;
+      // Render QR code for the otpauth URI
+      const qrEl = $('totp-qr');
+      qrEl.innerHTML = '';
+      try {
+        if (typeof QRCode !== 'undefined') {
+          new QRCode(qrEl, { text: res.totp.otpauth, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+        } else {
+          qrEl.innerHTML = '<span class="text-[10px] text-slate-500">QR unavailable — use the key below</span>';
+        }
+      } catch (err) {
+        qrEl.innerHTML = '<span class="text-[10px] text-slate-500">QR unavailable — use the key below</span>';
+      }
       $('form-register').classList.add('hidden');
       $('totp-setup').classList.remove('hidden');
     });
