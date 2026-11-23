@@ -172,7 +172,6 @@ Released under the **MIT License** — see [`LICENSE`](LICENSE) for details.
 
 - [Tailwind CSS](https://tailwindcss.com), [Lucide](https://lucide.dev), [Chart.js](https://www.chartjs.org), [Tesseract.js](https://github.com/naptha/tesseract.js)
 - Google Gemini & OpenRouter for AI capabilities
-- The **SBS SMART** companion project (Flask-based capture reference) informed the image/audio handling patterns.
 
 ---
 

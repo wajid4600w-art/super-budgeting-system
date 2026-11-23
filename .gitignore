@@ -20,7 +20,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# SBS SMART is a separate companion Flask project (nested repo), not bundled here
+# Local/other projects (not part of this repo)
 SBS SMART/
 
 # Local binaries / scripts
