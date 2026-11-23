@@ -1,9 +1,17 @@
-// Zero-dependency Node.js HTTP Server with Gemini & Nemotron AI Integration
+// ============================================================================
+// Each top-level function below is bracketed by banner comments showing its
+// exact line range, e.g.:
+//   // ===== functionName (L10-L25) =====   <- function starts here
+//   ...function body...
+//   // ===== end functionName (L25) =====   <- function ends here
+// Line numbers are a snapshot; re-check after edits.
+// ============================================================================
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
 // Load environment variables from .env if present
+// ===== loadEnv (L15-L30) =====
 function loadEnv() {
   const envPath = path.join(__dirname, '.env');
   if (fs.existsSync(envPath)) {
@@ -20,6 +28,7 @@ function loadEnv() {
     }
   }
 }
+// ===== end loadEnv (L30) =====
 loadEnv();
 
 const PORT = process.env.PORT || 3000;
@@ -41,6 +50,7 @@ const MIME_TYPES = {
 };
 
 // --- AI API HELPERS ---
+// ===== callGemini (L54-L78) =====
 async function callGemini(modelName, parts, generationConfig = {}) {
   if (!GEMINI_KEY) throw new Error('GEMINI_API_KEY is not configured');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_KEY}`;
@@ -66,9 +76,11 @@ async function callGemini(modelName, parts, generationConfig = {}) {
   if (!text) throw new Error('Empty response from Gemini');
   return text;
 }
+// ===== end callGemini (L78) =====
 
 const DEFAULT_GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
 
+// ===== callGeminiWithFallback (L84-L97) =====
 async function callGeminiWithFallback(modelList, parts, generationConfig = {}) {
   const models = modelList && modelList.length ? modelList : DEFAULT_GEMINI_MODELS;
   let lastErr;
@@ -83,7 +95,9 @@ async function callGeminiWithFallback(modelList, parts, generationConfig = {}) {
   }
   throw lastErr;
 }
+// ===== end callGeminiWithFallback (L97) =====
 
+// ===== callOpenRouter (L101-L127) =====
 async function callOpenRouter(modelName, messages, temperature = 0.3) {
   if (!OPENROUTER_KEY) throw new Error('OPENROUTER_API_KEY is not configured');
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -111,7 +125,9 @@ async function callOpenRouter(modelName, messages, temperature = 0.3) {
   if (!text) throw new Error('Empty response from OpenRouter');
   return text;
 }
+// ===== end callOpenRouter (L127) =====
 
+// ===== cleanJsonString (L131-L149) =====
 function cleanJsonString(str) {
   if (!str) return '{}';
   let cleaned = str.trim();
@@ -131,8 +147,10 @@ function cleanJsonString(str) {
   }
   return cleaned.trim();
 }
+// ===== end cleanJsonString (L149) =====
 
 // Read body helper
+// ===== readJsonBody (L154-L172) =====
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -152,7 +170,9 @@ function readJsonBody(req) {
     req.on('error', reject);
   });
 }
+// ===== end readJsonBody (L172) =====
 
+// ===== sendJson (L176-L184) =====
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=UTF-8',
@@ -162,6 +182,7 @@ function sendJson(res, statusCode, data) {
   });
   res.end(JSON.stringify(data));
 }
+// ===== end sendJson (L184) =====
 
 // --- SERVER HANDLER ---
 const server = http.createServer(async (req, res) => {
@@ -203,6 +224,12 @@ const server = http.createServer(async (req, res) => {
 
         // Strip data:image/...;base64, prefix if present
         const cleanBase64 = imageBase64.replace(/^data:image\/[a-z0-9-+.]+;base64,/, '');
+        if (!/^image\/(jpeg|png|webp)$/i.test(mimeType)) {
+          return sendJson(res, 400, { success: false, error: 'Unsupported image type' });
+        }
+        if (Buffer.from(cleanBase64, 'base64').length > 8 * 1024 * 1024) {
+          return sendJson(res, 400, { success: false, error: 'Image is larger than 8 MB' });
+        }
 
         // STAGE 1: Extract all literal OCR text from the image
         const ocrPrompt = `You are a high-precision Optical Character Recognition (OCR) engine.
@@ -410,6 +437,52 @@ Return ONLY valid JSON.`;
         return sendJson(res, 200, {
           success: true,
           model: usedModel,
+          data: parsed
+        });
+      }
+
+      // 3b. Gemini audio transcription and financial parsing
+      if (pathname === '/api/ai/voice-audio' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const { audioBase64, mimeType = 'audio/webm', today = new Date().toISOString().split('T')[0] } = body;
+
+        if (!audioBase64) {
+          return sendJson(res, 400, { success: false, error: 'audioBase64 is required' });
+        }
+        if (!/^audio\/(mpeg|mp4|wav|webm|ogg)$/i.test(mimeType)) {
+          return sendJson(res, 400, { success: false, error: 'Unsupported audio type' });
+        }
+
+        const cleanBase64 = audioBase64.replace(/^data:audio\/[a-z0-9-+.]+;base64,/, '');
+        if (Buffer.from(cleanBase64, 'base64').length > 8 * 1024 * 1024) {
+          return sendJson(res, 400, { success: false, error: 'Audio is larger than 8 MB' });
+        }
+
+        const prompt = `You are a financial voice extraction assistant.
+The reference today date is ${today}.
+Transcribe the spoken expense or income phrase, understand it, and return ONLY valid JSON:
+{
+  "transcript": "Clear transcription of the spoken phrase",
+  "merchant": "Short clear merchant or description",
+  "amount": 0.00,
+  "category": "one of: food, groceries, transport, housing, utilities, entertainment, health, education, shopping, other",
+  "date": "YYYY-MM-DD",
+  "type": "expense"
+}`;
+
+        const gemRes = await callGeminiWithFallback(
+          ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'],
+          [
+            { text: prompt },
+            { inlineData: { mimeType, data: cleanBase64 } }
+          ],
+          { responseMimeType: 'application/json' }
+        );
+
+        const parsed = JSON.parse(cleanJsonString(gemRes.text));
+        return sendJson(res, 200, {
+          success: true,
+          model: gemRes.model,
           data: parsed
         });
       }

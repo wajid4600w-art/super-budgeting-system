@@ -1,25 +1,22 @@
-/**
- * Super Budgeting System (SBS) - Core Application Logic
- * Web-based Personal Financial Management System
- */
+// ============================================================================
+// Each top-level function below is bracketed by banner comments showing its
+// exact line range, e.g.:
+//   // ===== functionName (L10-L25) =====   <- function starts here
+//   ...function body...
+//   // ===== end functionName (L25) =====   <- function ends here
+// Line numbers are a snapshot; re-check after edits.
+// ============================================================================
 
-// Obfuscated client-side fallback token for GitHub Pages static mobile hosting
-const DEFAULT_GEMINI_API_KEY = (function() {
-  try {
-    return atob("QVEuQWI4Uk42TFdoejRacXgwNVFLWG82RWJFMC1LWnRxS3dBRTVfVTlwcFVJSXpxYmtDMlE=");
-  } catch (e) {
-    return "";
-  }
-})();
-
+// ===== getActiveGeminiKey (L11-L18) =====
 function getActiveGeminiKey() {
   if (typeof appState !== "undefined" && appState.user?.geminiApiKey && !appState.user.geminiApiKey.includes("DEMO") && !appState.user.geminiApiKey.includes("YOUR_")) {
     return appState.user.geminiApiKey;
   }
   const stored = (typeof localStorage !== "undefined") ? localStorage.getItem("sbs_gemini_api_key") : null;
   if (stored) return stored;
-  return DEFAULT_GEMINI_API_KEY;
+  return "";
 }
+// ===== end getActiveGeminiKey (L18) =====
 
 // --- INITIAL SAMPLE DATA (Pre-seeded in SAR) ---
 const INITIAL_DATA = {
@@ -29,7 +26,7 @@ const INITIAL_DATA = {
     currency: "SAR",
     warningThreshold: 80, // percentage
     aiEnabled: true,
-    geminiApiKey: DEFAULT_GEMINI_API_KEY,
+    geminiApiKey: "",
     theme: "light"
   },
   globalBudget: 3500.00,
@@ -102,7 +99,7 @@ GRAND TOTAL (INCL. VAT):              185.50 SAR
 PAID VIA: MADA DEBIT (*1104)
 AUTH CODE: 882914
 ZATCA QR Code Validated [OK]
-OCR Engine: Gemini 3.1 Vision Multimodal
+Smart Capture: Verified receipt
 Status: Verified & Stored
 ================================================`
       }
@@ -148,7 +145,7 @@ TOTAL AMOUNT PAID:                     65.00 SAR
 PAYMENT: Apple Pay (Mada)
 AUTH: 441092
 ZATCA E-Invoice Phase 2 Compliant [OK]
-OCR Engine: Gemini 3.1 Vision Multimodal
+Smart Capture: Verified receipt
 ================================================`
       }
     },
@@ -206,7 +203,7 @@ Original Amount: $50.00 USD
 Active System Currency: SAR
 Exchange Peg: 1 USD = 3.7500 SAR
 Converted Budget Total: 187.50 SAR
-OCR Engine: Gemini 3.1 Vision Multimodal
+Smart Capture: Verified receipt
 Status: Validated & Logged in SAR
 ================================================`
       }
@@ -248,6 +245,7 @@ const CURRENCY_SYMBOLS = {
 };
 
 // Direct conversion helper functions
+// ===== getExchangeRateToSAR (L249-L256) =====
 function getExchangeRateToSAR(currency) {
   if (currency === "SAR") return 1.0;
   if (currency === "USD") return 3.75;
@@ -256,20 +254,25 @@ function getExchangeRateToSAR(currency) {
   if (currency === "AED") return 1.0204;
   return 1.0;
 }
+// ===== end getExchangeRateToSAR (L256) =====
 
+// ===== convertToSAR (L260-L265) =====
 function convertToSAR(amount, fromCurrency) {
   if (!amount) return 0;
   const curr = (fromCurrency || "SAR").toUpperCase();
   if (curr === "SAR") return amount;
   return amount * getExchangeRateToSAR(curr);
 }
+// ===== end convertToSAR (L265) =====
 
+// ===== convertFromSAR (L269-L274) =====
 function convertFromSAR(amountInSAR, toCurrency) {
   if (!amountInSAR) return 0;
   const curr = (toCurrency || "SAR").toUpperCase();
   if (curr === "SAR") return amountInSAR;
   return amountInSAR / getExchangeRateToSAR(curr);
 }
+// ===== end convertFromSAR (L274) =====
 
 // --- APPLICATION STATE ---
 let appState = {};
@@ -278,20 +281,112 @@ let categoryChartInstance = null;
 let trendChartInstance = null;
 let speechRecognizer = null;
 let isRecordingVoice = false;
+let mediaRecorder = null;
+let mediaRecorderChunks = [];
+let mediaRecorderStartedAt = 0;
+let voiceParsedDate = "";
+let voiceParsedType = "expense";
 
 // Initialize Application
 document.addEventListener("DOMContentLoaded", () => {
   loadState();
   initTheme();
   initCategoriesDropdowns();
+  initSidebar();
   renderDashboard();
   renderNotifications();
+  initHeroBubbles();
   setupSpeechRecognition();
   checkAiStatus();
   lucide.createIcons();
 });
 
+// --- SIDEBAR HOVER + PIN ---
+// ===== initHeroBubbles (L?) =====
+function initHeroBubbles() {
+  const hero = document.querySelector(".premium-hero");
+  if (!hero || hero.dataset.bubblesReady === "1") return;
+  hero.dataset.bubblesReady = "1";
+  const bubbles = hero.querySelectorAll(".hero-bubbles .bubble");
+  if (!bubbles.length) return;
+
+  hero.addEventListener("mousemove", (e) => {
+    const cx = e.clientX, cy = e.clientY;
+    const max = 150;
+    bubbles.forEach(b => {
+      const br = b.getBoundingClientRect();
+      const bx = br.left + br.width / 2;
+      const by = br.top + br.height / 2;
+      const dx = bx - cx, dy = by - cy;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist < max) {
+        const force = (1 - dist / max) * 28;
+        b.style.translate = `${(dx / dist) * force}px ${(dy / dist) * force}px`;
+        b.style.opacity = String(Math.min(0.6, 0.3 + (1 - dist / max) * 0.3));
+      } else {
+        b.style.translate = "0px 0px";
+      }
+    });
+  });
+  hero.addEventListener("mouseleave", () => {
+    bubbles.forEach(b => { b.style.translate = "0px 0px"; b.style.opacity = ""; });
+  });
+}
+// ===== end initHeroBubbles =====
+
+// ===== refreshApp (L305-L316) =====
+function refreshApp() {
+  const nameEl = document.getElementById("sidebar-user-name");
+  if (nameEl) nameEl.innerText = appState.user.name;
+  const emailEl = document.getElementById("sidebar-user-email");
+  if (emailEl) emailEl.innerText = appState.user.email;
+  const curSel = document.getElementById("currency-select");
+  if (curSel) curSel.value = appState.user.currency;
+  if (typeof updateCurrencyLabels === "function") updateCurrencyLabels();
+  renderDashboard();
+  renderNotifications();
+  if (typeof lucide !== "undefined") lucide.createIcons();
+}
+// ===== end refreshApp (L316) =====
+
+// ===== initSidebar (L320-L334) =====
+function initSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const pinned = localStorage.getItem("sbs_sidebar_pinned") === "1";
+  if (pinned) document.body.classList.add("sidebar-expanded");
+
+  if (sidebar && window.matchMedia("(min-width: 768px)").matches) {
+    sidebar.addEventListener("mouseenter", () => document.body.classList.add("sidebar-expanded"));
+    sidebar.addEventListener("mouseleave", () => {
+      if (localStorage.getItem("sbs_sidebar_pinned") !== "1") {
+        document.body.classList.remove("sidebar-expanded");
+      }
+    });
+  }
+  updatePinIcon();
+}
+// ===== end initSidebar (L334) =====
+
+// ===== updatePinIcon (L338-L343) =====
+function updatePinIcon() {
+  const icon = document.querySelector(".sidebar-toggle-icon i");
+  const pinned = localStorage.getItem("sbs_sidebar_pinned") === "1";
+  if (icon) icon.setAttribute("data-lucide", pinned ? "pin" : "pin-off");
+  if (typeof lucide !== "undefined") lucide.createIcons();
+}
+// ===== end updatePinIcon (L343) =====
+
+// ===== toggleSidebarPin (L347-L352) =====
+function toggleSidebarPin() {
+  const next = localStorage.getItem("sbs_sidebar_pinned") !== "1";
+  localStorage.setItem("sbs_sidebar_pinned", next ? "1" : "0");
+  document.body.classList.toggle("sidebar-expanded", next);
+  updatePinIcon();
+}
+// ===== end toggleSidebarPin (L352) =====
+
 // --- STATE MANAGEMENT & LOCAL STORAGE ---
+// ===== loadState (L357-L391) =====
 function loadState() {
   const stored = localStorage.getItem("super_budget_state");
   if (stored) {
@@ -324,14 +419,19 @@ function loadState() {
 
   // Update UI user name & currency
   document.getElementById("sidebar-user-name").innerText = appState.user.name;
-  document.getElementById("currency-select").value = appState.user.currency;
+  const curSel = document.getElementById("currency-select");
+  if (curSel) curSel.value = appState.user.currency;
   updateCurrencyLabels();
 }
+// ===== end loadState (L391) =====
 
+// ===== saveState (L395-L397) =====
 function saveState() {
   localStorage.setItem("super_budget_state", JSON.stringify(appState));
 }
+// ===== end saveState (L397) =====
 
+// ===== resetToSampleData (L401-L413) =====
 function resetToSampleData() {
   if (confirm("Reset all budgets, transactions, and settings back to original demo state?")) {
     appState = JSON.parse(JSON.stringify(INITIAL_DATA));
@@ -345,8 +445,51 @@ function resetToSampleData() {
     showToast("Application reset to sample demo data!");
   }
 }
+// ===== end resetToSampleData (L413) =====
+
+// ===== exportLocalData (L417-L433) =====
+function exportLocalData() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    application: "Super Budgeting System",
+    state: appState
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `sbs-financial-data-${new Date().toISOString().split("T")[0]}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  showToast("Your financial data export was downloaded.");
+}
+// ===== end exportLocalData (L433) =====
+
+// ===== deleteAllFinancialData (L437-L454) =====
+function deleteAllFinancialData() {
+  if (!confirm("Permanently delete all local transactions, budgets, savings goals, recurring items, and notifications?")) return;
+  appState.transactions = [];
+  appState.savingsGoals = [];
+  appState.recurring = [];
+  appState.notifications = [];
+  appState.globalBudget = 0;
+  appState.categories = appState.categories.filter(category => category.type === "income");
+  saveState();
+  closeModal("modal-settings");
+  renderDashboard();
+  renderTransactionsTable();
+  renderBudgets();
+  renderSavings();
+  renderRecurring();
+  renderNotifications();
+  showToast("Local financial data deleted.");
+}
+// ===== end deleteAllFinancialData (L454) =====
 
 // --- CURRENCY CONVERSION & FORMATTING ---
+// ===== formatMoney (L459-L467) =====
 function formatMoney(amountInSAR) {
   const currentCurr = appState.user.currency || "SAR";
   const rate = CURRENCY_RATES[currentCurr] || 1.0;
@@ -356,11 +499,15 @@ function formatMoney(amountInSAR) {
     maximumFractionDigits: 2
   }).format(converted);
 }
+// ===== end formatMoney (L467) =====
 
+// ===== getCurrencySymbol (L471-L473) =====
 function getCurrencySymbol() {
   return appState.user.currency || "SAR";
 }
+// ===== end getCurrencySymbol (L473) =====
 
+// ===== changeCurrency (L477-L487) =====
 function changeCurrency(newCurr) {
   appState.user.currency = newCurr;
   saveState();
@@ -372,15 +519,19 @@ function changeCurrency(newCurr) {
   renderReports();
   showToast(`Currency switched to ${newCurr}`);
 }
+// ===== end changeCurrency (L487) =====
 
+// ===== updateCurrencyLabels (L491-L496) =====
 function updateCurrencyLabels() {
   const symbol = getCurrencySymbol();
   document.querySelectorAll(".currency-symbol").forEach(el => {
     el.innerText = symbol;
   });
 }
+// ===== end updateCurrencyLabels (L496) =====
 
 // --- NAVIGATION ROUTER ---
+// ===== navigateTo (L501-L560) =====
 function navigateTo(viewId) {
   document.querySelectorAll(".page-view").forEach(el => el.classList.add("hidden"));
   // Desktop Sidebar active tab state
@@ -405,7 +556,12 @@ function navigateTo(viewId) {
   const targetView = document.getElementById(`view-${viewId}`);
   const targetNav = document.getElementById(`nav-${viewId}`);
 
-  if (targetView) targetView.classList.remove("hidden");
+  if (targetView) {
+    targetView.classList.remove("hidden");
+    targetView.classList.remove("page-enter");
+    void targetView.offsetWidth;
+    targetView.classList.add("page-enter");
+  }
   if (targetNav) {
     targetNav.classList.add("active", "text-brand-600", "bg-brand-50", "dark:bg-brand-900/30", "dark:text-brand-400");
     targetNav.classList.remove("text-slate-600", "dark:text-slate-400");
@@ -414,6 +570,7 @@ function navigateTo(viewId) {
   // Titles
   const titleMap = {
     dashboard: "Financial Dashboard",
+    "data-input": "Data Input & Capture",
     transactions: "Transactions Ledger",
     budgets: "Budgets & Spending Ceilings",
     savings: "Savings Goals & Targets",
@@ -425,6 +582,7 @@ function navigateTo(viewId) {
 
   // Re-render components on view change
   if (viewId === "dashboard") renderDashboard();
+  if (viewId === "data-input") setupDataInputDropzone();
   if (viewId === "transactions") renderTransactionsTable();
   if (viewId === "budgets") renderBudgets();
   if (viewId === "savings") renderSavings();
@@ -434,8 +592,35 @@ function navigateTo(viewId) {
 
   lucide.createIcons();
 }
+// ===== end navigateTo (L560) =====
+
+// --- COUNT-UP NUMBER ANIMATION ---
+// ===== animateNumber (L565-L585) =====
+function animateNumber(el, target, suffix = "") {
+  if (!el) return;
+  const start = Number(el.dataset.val || 0);
+  const end = Number(target) || 0;
+  el.dataset.val = end;
+  const fmt = (v) => `${formatMoney(v)}${suffix ? " " + suffix : ""}`;
+  if (start === end) {
+    el.innerText = fmt(end);
+    return;
+  }
+  const duration = 600;
+  const t0 = performance.now();
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const val = start + (end - start) * eased;
+    el.innerText = fmt(val);
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+// ===== end animateNumber (L585) =====
 
 // --- DASHBOARD CALCULATIONS & RENDERING ---
+// ===== renderDashboard (L590-L710) =====
 function renderDashboard() {
   const now = new Date();
   const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -459,16 +644,40 @@ function renderDashboard() {
   const budgetPct = Math.min(100, Math.round((totalExpenses / budgetLimit) * 100));
   const budgetRemaining = Math.max(0, budgetLimit - totalExpenses);
 
-  // Update Stat Cards
-  document.getElementById("stat-total-income").innerText = `${formatMoney(totalIncome)} ${getCurrencySymbol()}`;
-  document.getElementById("stat-total-expenses").innerText = `${formatMoney(totalExpenses)} ${getCurrencySymbol()}`;
-  
+  // Premium dashboard overview
+  const heroName = document.getElementById("hero-user-name");
+  const heroBalance = document.getElementById("hero-net-balance");
+  const heroFlow = document.getElementById("hero-cash-flow");
+  const heroDate = document.getElementById("hero-current-date");
+  if (heroName) heroName.innerText = (appState.user.name || "User").split(" ")[0];
+  if (heroBalance) heroBalance.innerText = `${formatMoney(netBalance)} ${getCurrencySymbol()}`;
+  if (heroFlow) {
+    heroFlow.className = netBalance >= 0
+      ? "mt-2 text-xs text-emerald-300 font-semibold"
+      : "mt-2 text-xs text-rose-300 font-semibold";
+    heroFlow.innerText = netBalance >= 0
+      ? `${formatMoney(netBalance)} positive net cash flow`
+      : `${formatMoney(Math.abs(netBalance))} ${getCurrencySymbol()} over current inflow`;
+  }
+  if (heroDate) {
+    heroDate.innerText = new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric"
+    }).format(new Date());
+  }
+
+  // Update Stat Cards (with count-up animation)
+  const sym = getCurrencySymbol();
+  animateNumber(document.getElementById("stat-total-income"), totalIncome, sym);
+  animateNumber(document.getElementById("stat-total-expenses"), totalExpenses, sym);
+
   const netEl = document.getElementById("stat-net-balance");
-  netEl.innerText = `${formatMoney(netBalance)} ${getCurrencySymbol()}`;
+  animateNumber(netEl, netBalance, sym);
   netEl.className = `text-2xl font-bold ${netBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`;
 
   // Global Budget Card
-  document.getElementById("stat-budget-spent").innerText = `${formatMoney(totalExpenses)} / ${formatMoney(budgetLimit)} ${getCurrencySymbol()}`;
+  document.getElementById("stat-budget-spent").innerText = `${formatMoney(totalExpenses)} / ${formatMoney(budgetLimit)} ${sym}`;
   document.getElementById("stat-budget-pct").innerText = `${budgetPct}%`;
   document.getElementById("stat-budget-remaining").innerText = `${formatMoney(budgetRemaining)} ${getCurrencySymbol()} remaining`;
 
@@ -477,16 +686,16 @@ function renderDashboard() {
 
   const badgeEl = document.getElementById("stat-budget-badge");
   if (budgetPct >= 100) {
-    budgetBar.className = "h-full rounded-full bg-rose-500 transition-all duration-500";
-    badgeEl.className = "text-xs font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300";
+    budgetBar.className = "h-full rounded-full bg-lavender-500 transition-all duration-500";
+    badgeEl.className = "text-xs font-bold px-2 py-0.5 rounded-full bg-lavender-100 text-lavender-700 dark:bg-lavender-500/20 dark:text-lavender-300";
     badgeEl.innerText = "Exceeded";
   } else if (budgetPct >= (appState.user.warningThreshold || 80)) {
     budgetBar.className = "h-full rounded-full bg-amber-500 transition-all duration-500";
     badgeEl.className = "text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300";
     badgeEl.innerText = "Warning (80%+)";
   } else {
-    budgetBar.className = "h-full rounded-full bg-emerald-500 transition-all duration-500";
-    badgeEl.className = "text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300";
+    budgetBar.className = "progress-gradient h-full rounded-full transition-all duration-500";
+    badgeEl.className = "text-xs font-bold px-2 py-0.5 rounded-full bg-cobalt-100 text-cobalt-700 dark:bg-cobalt-500/20 dark:text-cobalt-300";
     badgeEl.innerText = "Healthy";
   }
 
@@ -503,8 +712,39 @@ function renderDashboard() {
 
   // Update transaction counter badge
   document.getElementById("badge-tx-count").innerText = appState.transactions.length;
-}
 
+  // Populate stat card expandable breakdown summaries
+  const incomeBreakdown = appState.categories
+    .filter(c => c.type === "income")
+    .map(c => {
+      const sum = appState.transactions.filter(t => t.type === "income" && t.category === c.id).reduce((a, t) => a + t.amount, 0);
+      return sum > 0 ? `${c.name}: ${formatMoney(sum)}` : null;
+    })
+    .filter(Boolean)
+    .slice(0, 2);
+  const incEl = document.getElementById("stat-income-breakdown");
+  if (incEl) incEl.innerText = incomeBreakdown.length ? incomeBreakdown.join(" • ") : "No income logged yet";
+
+  const topExpenses = Object.entries(categorySpending)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([cid, amt]) => {
+      const cat = appState.categories.find(c => c.id === cid);
+      return cat ? `${cat.name}: ${formatMoney(amt)}` : null;
+    })
+    .filter(Boolean);
+  const expEl = document.getElementById("stat-expense-breakdown");
+  if (expEl) expEl.innerText = topExpenses.length ? `Top: ${topExpenses.join(" • ")}` : "No expenses logged yet";
+
+  const budgetBreakdownEl = document.getElementById("stat-budget-breakdown");
+  if (budgetBreakdownEl) {
+    const catBudgetCount = appState.categories.filter(c => c.type === "expense" && (c.budget || 0) > 0).length;
+    budgetBreakdownEl.innerText = `${catBudgetCount} category limit${catBudgetCount !== 1 ? 's' : ''} configured`;
+  }
+}
+// ===== end renderDashboard (L710) =====
+
+// ===== checkThresholdAlerts (L714-L756) =====
 function checkThresholdAlerts(totalExpenses, budgetLimit, categorySpending) {
   const alertBanner = document.getElementById("dashboard-alert-banner");
   let triggered = false;
@@ -516,7 +756,7 @@ function checkThresholdAlerts(totalExpenses, budgetLimit, categorySpending) {
     triggered = true;
     title = "Monthly Budget Limit Exceeded!";
     msg = `You have spent ${formatMoney(totalExpenses)} ${getCurrencySymbol()} which exceeds your ${formatMoney(budgetLimit)} ${getCurrencySymbol()} ceiling.`;
-    alertBanner.className = "p-4 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 flex items-center justify-between";
+    alertBanner.className = "p-4 rounded-xl border border-lavender-200 dark:border-lavender-500/40 bg-lavender-50 dark:bg-lavender-500/10 text-lavender-700 dark:text-lavender-200 flex items-center justify-between";
   } else if ((totalExpenses / budgetLimit) >= ((appState.user.warningThreshold || 80) / 100)) {
     triggered = true;
     title = "Approaching Monthly Budget Limit";
@@ -533,7 +773,7 @@ function checkThresholdAlerts(totalExpenses, budgetLimit, categorySpending) {
           triggered = true;
           title = `${cat.name} Budget Exceeded`;
           msg = `Spent ${formatMoney(spent)} of ${formatMoney(cat.budget)} ${getCurrencySymbol()}.`;
-          alertBanner.className = "p-4 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 flex items-center justify-between";
+          alertBanner.className = "p-4 rounded-xl border border-lavender-200 dark:border-lavender-500/40 bg-lavender-50 dark:bg-lavender-500/10 text-lavender-700 dark:text-lavender-200 flex items-center justify-between";
           break;
         }
       }
@@ -548,24 +788,27 @@ function checkThresholdAlerts(totalExpenses, budgetLimit, categorySpending) {
     alertBanner.classList.add("hidden");
   }
 }
+// ===== end checkThresholdAlerts (L756) =====
 
 // --- CHARTS INITIALIZATION (Chart.js) ---
+// ===== renderCharts (L761-L858) =====
 function renderCharts(categorySpending, totalIncome, totalExpenses) {
-  // Category Donut Chart
+  const isDark = document.documentElement.classList.contains("dark");
+  const textColor = isDark ? "#cbd5e1" : "#475569";
+  const gridColor = isDark ? "rgba(148, 163, 184, 0.14)" : "rgba(148, 163, 184, 0.22)";
+  const limeLavender = ["#E4F993", "#818CF8", "#60A5FA", "#F87171", "#D9F99D", "#A5B4FC", "#93C5FD", "#FCA5A5", "#D4ED76", "#C7D2FE"];
+
+  // Category Donut Chart (lime + lavender palette)
   const catLabels = [];
   const catData = [];
   const catColors = [];
-
   appState.categories.forEach(cat => {
     if (cat.type === "expense" && categorySpending[cat.id]) {
       catLabels.push(cat.name);
       catData.push(categorySpending[cat.id]);
-      catColors.push(cat.color || "#3b82f6");
+      catColors.push(limeLavender[catColors.length % limeLavender.length]);
     }
   });
-
-  const isDark = document.documentElement.classList.contains("dark");
-  const textColor = isDark ? "#cbd5e1" : "#475569";
 
   const ctxCat = document.getElementById("categoryChart").getContext("2d");
   if (categoryChartInstance) categoryChartInstance.destroy();
@@ -578,25 +821,32 @@ function renderCharts(categorySpending, totalIncome, totalExpenses) {
         data: catData,
         backgroundColor: catColors,
         borderWidth: 2,
-        borderColor: isDark ? "#0f172a" : "#ffffff"
+        borderColor: isDark ? "#1A1B21" : "#F2F0F2",
+        hoverOffset: 8,
+        spacing: 2
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: { animateRotate: true, duration: 900, easing: "easeOutQuart" },
       plugins: {
         legend: {
           position: "right",
-          labels: { color: textColor, font: { size: 11, family: "Plus Jakarta Sans" } }
+          labels: { color: textColor, font: { size: 11, family: "Plus Jakarta Sans" }, boxWidth: 12, usePointStyle: true, pointStyle: "circle" }
         }
       },
-      cutout: "68%"
+      cutout: "72%"
     }
   });
 
-  // Trend / Inflow vs Outflow Bar Chart
+  // Trend / Inflow vs Outflow Bar Chart (lime inflow, lavender outflow)
   const ctxTrend = document.getElementById("trendChart").getContext("2d");
   if (trendChartInstance) trendChartInstance.destroy();
+
+  const limeGradient = ctxTrend.createLinearGradient(0, 0, 0, 260);
+  limeGradient.addColorStop(0, isDark ? "#E4F993" : "#ECFCAA");
+  limeGradient.addColorStop(1, isDark ? "rgba(212, 237, 118, 0.55)" : "rgba(212, 237, 118, 0.75)");
 
   trendChartInstance = new Chart(ctxTrend, {
     type: "bar",
@@ -606,34 +856,43 @@ function renderCharts(categorySpending, totalIncome, totalExpenses) {
         {
           label: "Inflows (Income)",
           data: [5000, 5200, totalIncome],
-          backgroundColor: "#10b981",
-          borderRadius: 6
+          backgroundColor: limeGradient,
+          borderColor: isDark ? "#E4F993" : "#D4ED76",
+          borderWidth: { top: 1, left: 0, right: 0, bottom: 0 },
+          borderRadius: 8,
+          maxBarThickness: 46
         },
         {
           label: "Outflows (Expenses)",
           data: [3100, 3400, totalExpenses],
-          backgroundColor: "#f43f5e",
-          borderRadius: 6
+          backgroundColor: isDark ? "rgba(220, 38, 38, 0.55)" : "rgba(248, 113, 113, 0.8)",
+          borderColor: isDark ? "#DC2626" : "#F87171",
+          borderWidth: { top: 1, left: 0, right: 0, bottom: 0 },
+          borderRadius: 8,
+          maxBarThickness: 46
         }
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: { duration: 900, easing: "easeOutQuart" },
       plugins: {
         legend: {
           position: "top",
-          labels: { color: textColor, font: { size: 11, family: "Plus Jakarta Sans" } }
+          labels: { color: textColor, font: { size: 11, family: "Plus Jakarta Sans" }, usePointStyle: true, pointStyle: "circle", boxWidth: 8 }
         }
       },
       scales: {
-        x: { ticks: { color: textColor } },
-        y: { ticks: { color: textColor } }
+        x: { grid: { display: false }, ticks: { color: textColor } },
+        y: { grid: { color: gridColor }, border: { display: false }, ticks: { color: textColor } }
       }
     }
   });
 }
+// ===== end renderCharts (L858) =====
 
+// ===== renderDashboardRecentTx (L862-L900) =====
 function renderDashboardRecentTx() {
   const tbody = document.getElementById("dashboard-tx-table");
   tbody.innerHTML = "";
@@ -673,7 +932,9 @@ function renderDashboardRecentTx() {
   });
   lucide.createIcons();
 }
+// ===== end renderDashboardRecentTx (L900) =====
 
+// ===== renderDashboardSavings (L904-L932) =====
 function renderDashboardSavings() {
   const container = document.getElementById("dashboard-savings-list");
   container.innerHTML = "";
@@ -703,7 +964,9 @@ function renderDashboardSavings() {
     container.appendChild(div);
   });
 }
+// ===== end renderDashboardSavings (L932) =====
 
+// ===== renderDashboardRecurring (L936-L960) =====
 function renderDashboardRecurring() {
   const container = document.getElementById("dashboard-recurring-list");
   container.innerHTML = "";
@@ -729,8 +992,10 @@ function renderDashboardRecurring() {
     container.appendChild(div);
   });
 }
+// ===== end renderDashboardRecurring (L960) =====
 
 // --- TRANSACTIONS LEDGER VIEW & CRUD ---
+// ===== renderTransactionsTable (L965-L1045) =====
 function renderTransactionsTable() {
   const tbody = document.getElementById("full-tx-table");
   tbody.innerHTML = "";
@@ -812,11 +1077,15 @@ function renderTransactionsTable() {
 
   lucide.createIcons();
 }
+// ===== end renderTransactionsTable (L1045) =====
 
+// ===== filterTransactions (L1049-L1051) =====
 function filterTransactions() {
   renderTransactionsTable();
 }
+// ===== end filterTransactions (L1051) =====
 
+// ===== deleteTransaction (L1055-L1063) =====
 function deleteTransaction(id) {
   if (confirm("Are you sure you want to delete this transaction? All associated budgets will recalculate.")) {
     appState.transactions = appState.transactions.filter(t => t.id !== id);
@@ -826,7 +1095,9 @@ function deleteTransaction(id) {
     showToast("Transaction deleted.");
   }
 }
+// ===== end deleteTransaction (L1063) =====
 
+// ===== editTransaction (L1067-L1082) =====
 function editTransaction(id) {
   const tx = appState.transactions.find(t => t.id === id);
   if (!tx) return;
@@ -843,7 +1114,9 @@ function editTransaction(id) {
 
   openModal("modal-transaction");
 }
+// ===== end editTransaction (L1082) =====
 
+// ===== handleSaveTransaction (L1086-L1133) =====
 function handleSaveTransaction(e) {
   e.preventDefault();
   const editId = document.getElementById("tx-edit-id").value;
@@ -892,7 +1165,9 @@ function handleSaveTransaction(e) {
   renderDashboard();
   showToast(editId ? "Transaction updated." : "Transaction logged successfully!");
 }
+// ===== end handleSaveTransaction (L1133) =====
 
+// ===== setTxType (L1137-L1153) =====
 function setTxType(type) {
   document.getElementById("tx-type").value = type;
   const btnExpense = document.getElementById("btn-type-expense");
@@ -910,8 +1185,10 @@ function setTxType(type) {
   }
   populateCategorySelect("tx-category", type);
 }
+// ===== end setTxType (L1153) =====
 
 // --- BUDGETS & LIMITS MANAGEMENT ---
+// ===== renderBudgets (L1158-L1220) =====
 function renderBudgets() {
   document.getElementById("budget-global-display").innerText = formatMoney(appState.globalBudget || 3500);
 
@@ -937,8 +1214,8 @@ function renderBudgets() {
     let barColor = "bg-emerald-500";
 
     if (isOver) {
-      statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">Exceeded</span>`;
-      barColor = "bg-rose-500";
+      statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-lavender-100 text-lavender-700 dark:bg-lavender-500/20 dark:text-lavender-300">Exceeded</span>`;
+      barColor = "bg-lavender-500";
     } else if (isWarn) {
       statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">At Limit (${pct}%)</span>`;
       barColor = "bg-amber-500";
@@ -967,47 +1244,88 @@ function renderBudgets() {
       </div>
       <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
         <span class="text-slate-400">${limit > spent ? formatMoney(limit - spent) + ' ' + getCurrencySymbol() + ' left' : '0.00 left'}</span>
-        <button onclick="promptEditCategoryBudget('${cat.id}')" class="text-brand-600 hover:underline font-semibold">
-          Edit Limit
-        </button>
+        <div class="flex items-center gap-3">
+          <button onclick="promptEditCategoryBudget('${cat.id}')" class="text-brand-600 hover:underline font-semibold">
+            Edit Limit
+          </button>
+          <button onclick="deleteCategory('${cat.id}')" title="Delete category" class="w-5 h-5 flex items-center justify-center rounded-full text-slate-400 hover:text-white hover:bg-rose-500 transition font-bold">✕</button>
+        </div>
       </div>
     `;
     grid.appendChild(card);
   });
 }
+// ===== end renderBudgets (L1220) =====
+
+// ===== promptEditGlobalBudget (L1224-L1237) =====
+let _budgetEditTarget = null;
 
 function promptEditGlobalBudget() {
-  const current = appState.globalBudget || 3500;
-  const input = prompt("Enter new global monthly budget ceiling in SAR:", current);
-  if (input !== null) {
-    const val = parseFloat(input);
-    if (!isNaN(val) && val > 0) {
-      appState.globalBudget = val;
-      saveState();
-      renderBudgets();
-      renderDashboard();
-      showToast("Global monthly budget updated.");
-    }
-  }
+  _budgetEditTarget = { type: "global" };
+  document.getElementById("budget-edit-title").innerText = "Edit Global Monthly Budget";
+  const inp = document.getElementById("budget-edit-input");
+  const disp = convertFromSAR(appState.globalBudget || 3500, appState.user.currency || "SAR");
+  inp.value = Number(disp.toFixed(2));
+  const cur = document.getElementById("budget-edit-currency");
+  if (cur) cur.innerText = getCurrencySymbol();
+  openModal("modal-budget-edit");
+  setTimeout(() => { inp.focus(); inp.select(); }, 60);
 }
+// ===== end promptEditGlobalBudget (L1237) =====
 
+// ===== promptEditCategoryBudget (L1241-L1255) =====
 function promptEditCategoryBudget(catId) {
   const cat = appState.categories.find(c => c.id === catId);
   if (!cat) return;
-  const input = prompt(`Enter spending ceiling for ${cat.name} in SAR:`, cat.budget || 0);
-  if (input !== null) {
-    const val = parseFloat(input);
-    if (!isNaN(val) && val >= 0) {
-      cat.budget = val;
-      saveState();
-      renderBudgets();
-      renderDashboard();
-      showToast(`${cat.name} budget updated.`);
-    }
-  }
+  _budgetEditTarget = { type: "category", id: catId };
+  document.getElementById("budget-edit-title").innerText = `Edit ${cat.name} Limit`;
+  const inp = document.getElementById("budget-edit-input");
+  const disp = convertFromSAR(cat.budget || 0, appState.user.currency || "SAR");
+  inp.value = Number(disp.toFixed(2));
+  const cur = document.getElementById("budget-edit-currency");
+  if (cur) cur.innerText = getCurrencySymbol();
+  openModal("modal-budget-edit");
+  setTimeout(() => { inp.focus(); inp.select(); }, 60);
 }
+// ===== end promptEditCategoryBudget (L1255) =====
+
+// ===== saveBudgetEdit (L1257) =====
+function saveBudgetEdit() {
+  if (!_budgetEditTarget) return;
+  const val = parseFloat(document.getElementById("budget-edit-input").value);
+  if (isNaN(val) || val < 0) { showToast("Enter a valid amount (SAR)."); return; }
+  const sarVal = convertToSAR(val, appState.user.currency || "SAR");
+  if (_budgetEditTarget.type === "global") {
+    appState.globalBudget = sarVal;
+    showToast("Global monthly budget updated.");
+  } else {
+    const cat = appState.categories.find(c => c.id === _budgetEditTarget.id);
+    if (cat) { cat.budget = sarVal; showToast(`${cat.name} budget updated.`); }
+  }
+  saveState();
+  closeModal("modal-budget-edit");
+  renderBudgets();
+  renderDashboard();
+  _budgetEditTarget = null;
+}
+// ===== end saveBudgetEdit (L1276) =====
+
+// ===== deleteCategory (L1278) =====
+function deleteCategory(catId) {
+  const cat = appState.categories.find(c => c.id === catId);
+  if (!cat) return;
+  if (!confirm(`Delete the category "${cat.name}"? This cannot be undone.`)) return;
+  appState.categories = appState.categories.filter(c => c.id !== catId);
+  saveState();
+  if (typeof initCategoriesDropdowns === "function") initCategoriesDropdowns();
+  renderBudgets();
+  renderDashboard();
+  showToast(`${cat.name} category deleted.`);
+}
+// ===== end deleteCategory (L1289) =====
 
 // --- SAVINGS GOALS ---
+// ===== renderSavings (L1260-L1306) =====
 function renderSavings() {
   const grid = document.getElementById("savings-goals-grid");
   grid.innerHTML = "";
@@ -1055,7 +1373,9 @@ function renderSavings() {
 
   lucide.createIcons();
 }
+// ===== end renderSavings (L1306) =====
 
+// ===== handleSaveGoal (L1310-L1337) =====
 function handleSaveGoal(e) {
   e.preventDefault();
   const name = document.getElementById("goal-name").value.trim();
@@ -1084,7 +1404,9 @@ function handleSaveGoal(e) {
   renderDashboard();
   showToast("New savings goal added!");
 }
+// ===== end handleSaveGoal (L1337) =====
 
+// ===== depositToGoal (L1341-L1355) =====
 function depositToGoal(id) {
   const goal = appState.savingsGoals.find(g => g.id === id);
   if (!goal) return;
@@ -1100,7 +1422,9 @@ function depositToGoal(id) {
     }
   }
 }
+// ===== end depositToGoal (L1355) =====
 
+// ===== deleteGoal (L1359-L1367) =====
 function deleteGoal(id) {
   if (confirm("Delete this savings goal?")) {
     appState.savingsGoals = appState.savingsGoals.filter(g => g.id !== id);
@@ -1110,8 +1434,10 @@ function deleteGoal(id) {
     showToast("Goal removed.");
   }
 }
+// ===== end deleteGoal (L1367) =====
 
 // --- RECURRING TRANSACTIONS ENGINE ---
+// ===== renderRecurring (L1372-L1418) =====
 function renderRecurring() {
   const tbody = document.getElementById("recurring-table-body");
   tbody.innerHTML = "";
@@ -1159,7 +1485,9 @@ function renderRecurring() {
 
   lucide.createIcons();
 }
+// ===== end renderRecurring (L1418) =====
 
+// ===== handleSaveRecurring (L1422-L1453) =====
 function handleSaveRecurring(e) {
   e.preventDefault();
   const title = document.getElementById("rec-title").value.trim();
@@ -1192,7 +1520,9 @@ function handleSaveRecurring(e) {
   renderDashboard();
   showToast("Recurring transaction scheduled!");
 }
+// ===== end handleSaveRecurring (L1453) =====
 
+// ===== toggleRecurringActive (L1457-L1465) =====
 function toggleRecurringActive(id) {
   const rec = appState.recurring.find(r => r.id === id);
   if (rec) {
@@ -1202,7 +1532,9 @@ function toggleRecurringActive(id) {
     showToast(rec.active ? "Recurring item resumed." : "Recurring item paused.");
   }
 }
+// ===== end toggleRecurringActive (L1465) =====
 
+// ===== deleteRecurring (L1469-L1476) =====
 function deleteRecurring(id) {
   if (confirm("Remove this recurring rule?")) {
     appState.recurring = appState.recurring.filter(r => r.id !== id);
@@ -1211,7 +1543,9 @@ function deleteRecurring(id) {
     showToast("Recurring item deleted.");
   }
 }
+// ===== end deleteRecurring (L1476) =====
 
+// ===== processDueRecurringTransactions (L1480-L1517) =====
 function processDueRecurringTransactions() {
   const activeItems = appState.recurring.filter(r => r.active);
   if (activeItems.length === 0) {
@@ -1223,6 +1557,8 @@ function processDueRecurringTransactions() {
   let processedCount = 0;
 
   activeItems.forEach(rec => {
+    const dueDate = rec.nextDate || today;
+    if (dueDate > today) return;
     appState.transactions.push({
       id: "tx-rec-" + Date.now() + Math.random(),
       type: rec.type,
@@ -1230,10 +1566,16 @@ function processDueRecurringTransactions() {
       currency: rec.currency,
       category: rec.category,
       merchant: rec.title,
-      date: today,
+      date: dueDate,
       notes: `Auto-logged from ${rec.freq} recurring schedule`,
       method: "Recurring Auto"
     });
+    const next = new Date(`${dueDate}T12:00:00`);
+    if (rec.freq === "daily") next.setDate(next.getDate() + 1);
+    else if (rec.freq === "weekly") next.setDate(next.getDate() + 7);
+    else if (rec.freq === "yearly") next.setFullYear(next.getFullYear() + 1);
+    else next.setMonth(next.getMonth() + 1);
+    rec.nextDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
     processedCount++;
   });
 
@@ -1242,9 +1584,11 @@ function processDueRecurringTransactions() {
   renderDashboard();
   showToast(`Executed and logged ${processedCount} recurring transactions!`);
 }
+// ===== end processDueRecurringTransactions (L1517) =====
 
 // --- RECEIPT OCR PIPELINE (FR-19 to FR-23 with Multi-Currency & Gemini AI) ---
 
+// ===== recalculateOcrCurrency (L1523-L1562) =====
 function recalculateOcrCurrency() {
   const origCurrency = (document.getElementById("ocr-res-currency")?.value || "SAR").toUpperCase();
   const origAmount = parseFloat(document.getElementById("ocr-res-amount")?.value) || 0;
@@ -1285,8 +1629,10 @@ function recalculateOcrCurrency() {
     banner.classList.remove("hidden");
   }
 }
+// ===== end recalculateOcrCurrency (L1562) =====
 
 // High-resolution image preparation preserving crisp receipt text for OCR
+// ===== prepareImageForOcr (L1567-L1600) =====
 function prepareImageForOcr(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -1296,7 +1642,7 @@ function prepareImageForOcr(file) {
         let width = img.width;
         let height = img.height;
         const maxW = 2048;
-        const maxH = 2560;
+        const maxH = 1920;
 
         if (width > maxW || height > maxH) {
           const ratio = Math.min(maxW / width, maxH / height);
@@ -1321,13 +1667,17 @@ function prepareImageForOcr(file) {
     reader.readAsDataURL(file);
   });
 }
+// ===== end prepareImageForOcr (L1600) =====
 
 // Backward-compatible image compressor
+// ===== compressImage (L1605-L1607) =====
 function compressImage(file, maxWidth = 1024, maxHeight = 1024, quality = 0.85) {
   return prepareImageForOcr(file).then(res => res.dataUrl);
 }
+// ===== end compressImage (L1607) =====
 
 // Intelligent heuristic receipt text parser (parses real extracted OCR text if AI is offline)
+// ===== parseReceiptTextHeuristically (L1612-L1693) =====
 function parseReceiptTextHeuristically(rawText, fileName) {
   const text = (rawText || "").trim();
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
@@ -1410,8 +1760,10 @@ function parseReceiptTextHeuristically(rawText, fileName) {
     confidence: text.length > 30 ? 95 : 80
   };
 }
+// ===== end parseReceiptTextHeuristically (L1693) =====
 
 // Full 2-Stage Receipt OCR Pipeline with Vision AI and On-Device Tesseract Fallback
+// ===== handleReceiptUpload (L1698-L1837) =====
 async function handleReceiptUpload(e) {
   const file = (e && e.target && e.target.files && e.target.files[0]) || (e && e.file) || (e instanceof File ? e : null);
   if (!file) return;
@@ -1451,7 +1803,7 @@ async function handleReceiptUpload(e) {
     }
 
     let rawOcrText = "";
-    let visionEngine = "Gemini 3.1 Vision";
+    let visionEngine = "Smart vision";
 
     // 2. Check Local Server if running on localhost:3000
     const isLocalServer = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.port === "3000");
@@ -1552,6 +1904,7 @@ Analyze this receipt OCR text and return a JSON object with this exact structure
   "items": ["Item name and price"],
   "confidence": 98
 }
+// ===== end handleReceiptUpload (L1837) =====
 
 Receipt OCR Text:
 ${rawOcrText}
@@ -1602,6 +1955,7 @@ Return ONLY raw valid JSON.`;
   }
 }
 
+// ===== testSampleReceipt (L1890-L2113) =====
 function testSampleReceipt(type) {
   let sampleData = {};
   const today = new Date().toISOString().split("T")[0];
@@ -1646,7 +2000,7 @@ Original Scanned Amount: $50.00 USD
 Active System Currency: SAR
 Exchange Peg: 1 USD = 3.7500 SAR
 Calculated Budget Allocation: 187.50 SAR
-OCR Confidence: 99.4% (Gemini Vision Multimodal)
+OCR Confidence: 99.4%
 ================================================`,
       confidence: 99
     };
@@ -1826,7 +2180,9 @@ PAYMENT: Apple Pay (Mada)
 
   startOcrProcess("sample-receipt.jpg", sampleData);
 }
+// ===== end testSampleReceipt (L2113) =====
 
+// ===== startOcrProcess (L2117-L2192) =====
 function startOcrProcess(fileName, preData = null) {
   const uploadBox = document.getElementById("ocr-upload-box");
   const progressBox = document.getElementById("ocr-progress-container");
@@ -1875,7 +2231,7 @@ function startOcrProcess(fileName, preData = null) {
 
     const confEl = document.getElementById("ocr-ai-confidence");
     if (confEl) {
-      confEl.innerText = `${data.confidence || 98}% confidence (Gemini Vision Multimodal)`;
+      confEl.innerText = `${data.confidence || 98}% confidence`;
     }
 
     // Render items preview
@@ -1903,7 +2259,9 @@ function startOcrProcess(fileName, preData = null) {
     showToast(`Parsed: ${data.amount} ${data.currency || 'SAR'} from ${data.merchant}`);
   }, 600);
 }
+// ===== end startOcrProcess (L2192) =====
 
+// ===== confirmOcrTransaction (L2196-L2269) =====
 function confirmOcrTransaction() {
   const merchant = document.getElementById("ocr-res-merchant").value.trim();
   const origCurrency = (document.getElementById("ocr-res-currency")?.value || "SAR").toUpperCase();
@@ -1961,7 +2319,7 @@ Status: Manually Verified via OCR Review Form
     date,
     notes: origCurrency !== "SAR" 
       ? `Auto-converted from ${origAmount.toFixed(2)} ${origCurrency} (${rateString})`
-      : "Scanned and verified via Gemini Vision OCR",
+      : "Scanned and verified by smart receipt capture",
     method: "OCR Receipt",
     ocrData: ocrData
   };
@@ -1978,8 +2336,10 @@ Status: Manually Verified via OCR Review Form
     showToast("Receipt transaction verified & logged to budget!");
   }
 }
+// ===== end confirmOcrTransaction (L2269) =====
 
 // --- RECEIPT DETAILS & RAW OCR AUDIT MODAL HANDLERS ---
+// ===== viewReceiptDetails (L2274-L2369) =====
 function viewReceiptDetails(txId) {
   const tx = appState.transactions.find(t => t.id === txId);
   if (!tx) {
@@ -2076,7 +2436,9 @@ Notes: ${tx.notes || 'None'}
   openModal("modal-receipt-details");
   lucide.createIcons();
 }
+// ===== end viewReceiptDetails (L2369) =====
 
+// ===== copyRawOcrText (L2373-L2384) =====
 function copyRawOcrText() {
   const rawBox = document.getElementById("rc-raw-text-box");
   if (!rawBox || !rawBox.innerText) {
@@ -2089,8 +2451,10 @@ function copyRawOcrText() {
     showToast("Copied to clipboard!");
   });
 }
+// ===== end copyRawOcrText (L2384) =====
 
 // --- VOICE INPUT ENGINE (FR-24 to FR-28 with AI NLP Parsing) ---
+// ===== setupSpeechRecognition (L2389-L2419) =====
 function setupSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (SpeechRecognition) {
@@ -2122,7 +2486,9 @@ function setupSpeechRecognition() {
     };
   }
 }
+// ===== end setupSpeechRecognition (L2419) =====
 
+// ===== toggleVoiceRecording (L2423-L2433) =====
 function toggleVoiceRecording() {
   if (!speechRecognizer) {
     alert("Web Speech API is not supported in this browser. Please use the instant sample voice buttons below!");
@@ -2134,15 +2500,126 @@ function toggleVoiceRecording() {
     speechRecognizer.stop();
   }
 }
+// ===== end toggleVoiceRecording (L2433) =====
 
+// ===== testVoicePhrase (L2437-L2439) =====
 function testVoicePhrase(phrase) {
   parseVoicePhrase(phrase);
 }
+// ===== end testVoicePhrase (L2439) =====
 
+// ===== toggleAudioRecording (L2443-L2475) =====
+async function toggleAudioRecording() {
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    showToast("In-browser audio recording is not supported. Upload an audio file instead.");
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const preferredTypes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+    const mimeType = preferredTypes.find(type => MediaRecorder.isTypeSupported(type)) || "";
+    mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    mediaRecorderChunks = [];
+    mediaRecorderStartedAt = Date.now();
+    mediaRecorder.ondataavailable = event => {
+      if (event.data.size) mediaRecorderChunks.push(event.data);
+    };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(track => track.stop());
+      const blob = new Blob(mediaRecorderChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      await analyzeVoiceAudioBlob(blob);
+    };
+    mediaRecorder.start();
+    document.getElementById("btn-audio-record").innerText = "Stop & Analyze";
+    document.getElementById("voice-status-label").innerText = "Recording... Maximum 5 minutes";
+  } catch (err) {
+    console.error("Microphone recording failed:", err);
+    showToast("Unable to access the microphone. Check browser permissions.");
+  }
+}
+// ===== end toggleAudioRecording (L2475) =====
+
+// ===== handleVoiceAudioFile (L2479-L2488) =====
+async function handleVoiceAudioFile(event) {
+  const file = event?.target?.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) {
+    showToast("Audio file must be 8 MB or smaller.");
+    return;
+  }
+  await analyzeVoiceAudioBlob(file);
+}
+// ===== end handleVoiceAudioFile (L2488) =====
+
+// ===== analyzeVoiceAudioBlob (L2492-L2532) =====
+async function analyzeVoiceAudioBlob(blob) {
+  if (mediaRecorder && mediaRecorder.state === "inactive") {
+    document.getElementById("btn-audio-record").innerText = "Record & Analyze";
+  }
+
+  const durationSeconds = mediaRecorderStartedAt ? (Date.now() - mediaRecorderStartedAt) / 1000 : 0;
+  if (durationSeconds > 300) {
+    showToast("Audio recordings must be five minutes or shorter.");
+    return;
+  }
+
+  document.getElementById("voice-review-container").classList.remove("hidden");
+  document.getElementById("voice-status-label").innerText = "Transcribing and analyzing audio...";
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const dataUrl = reader.result;
+    const mimeType = blob.type || "audio/webm";
+    try {
+      const res = await fetch('/api/ai/voice-audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audioBase64: dataUrl,
+          mimeType,
+          today: new Date().toISOString().split("T")[0]
+        })
+      });
+      if (!res.ok) throw new Error(`Audio analysis failed (${res.status})`);
+      const json = await res.json();
+      if (!json.success || !json.data) throw new Error(json.error || "Empty audio analysis response");
+      applyVoiceParsedResult(json.data, json.model || "Gemini");
+    } catch (err) {
+      console.error("Voice audio analysis failed:", err);
+      document.getElementById("voice-status-label").innerText = "Audio could not be analyzed. Use the text dictation mode.";
+      showToast("Audio analysis is unavailable. Check smart capture configuration.");
+    }
+  };
+  reader.onerror = () => showToast("Unable to read the selected audio file.");
+  reader.readAsDataURL(blob);
+}
+// ===== end analyzeVoiceAudioBlob (L2532) =====
+
+// ===== applyVoiceParsedResult (L2536-L2546) =====
+function applyVoiceParsedResult(parsed, modelName) {
+  const transcript = parsed.transcript || parsed.merchant || "Audio transaction";
+  voiceParsedDate = /^\d{4}-\d{2}-\d{2}$/.test(parsed.date || "") ? parsed.date : new Date().toISOString().split("T")[0];
+  voiceParsedType = parsed.type === "income" ? "income" : "expense";
+  document.getElementById("voice-transcript-text").innerText = `"${transcript}"`;
+  document.getElementById("voice-res-amount").value = parsed.amount || 0;
+  if (parsed.category) document.getElementById("voice-res-category").value = parsed.category;
+  document.getElementById("voice-res-desc").value = parsed.merchant || transcript;
+  document.getElementById("voice-status-label").innerText = `AI recognized (${modelName})! Review before saving:`;
+  showToast("Voice audio transcribed and parsed with AI!");
+}
+// ===== end applyVoiceParsedResult (L2546) =====
+
+// ===== parseVoicePhrase (L2550-L2604) =====
 async function parseVoicePhrase(transcript) {
   document.getElementById("voice-review-container").classList.remove("hidden");
   document.getElementById("voice-transcript-text").innerText = `"${transcript}"`;
-  document.getElementById("voice-status-label").innerText = "Gemini & Nemotron AI analyzing speech...";
+  document.getElementById("voice-status-label").innerText = "Analyzing your voice...";
 
   populateCategorySelect("voice-res-category", "expense");
 
@@ -2194,6 +2671,7 @@ Extract transaction details into JSON matching this exact schema:
   "date": "YYYY-MM-DD",
   "type": "expense"
 }
+// ===== end parseVoicePhrase (L2604) =====
 Return ONLY valid raw JSON.`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${activeKey}`, {
@@ -2216,8 +2694,8 @@ Return ONLY valid raw JSON.`;
           document.getElementById("voice-res-category").value = parsed.category;
         }
         document.getElementById("voice-res-desc").value = parsed.merchant || transcript;
-        document.getElementById("voice-status-label").innerText = "AI recognized (Gemini 3.1 Flash Lite)! Review before saving:";
-        showToast("Voice phrase parsed with Gemini AI!");
+        document.getElementById("voice-status-label").innerText = "Smart analysis complete. Review before saving:";
+        showToast("Voice phrase analyzed!");
         return;
       }
     } catch (directErr) {
@@ -2255,11 +2733,12 @@ Return ONLY valid raw JSON.`;
     document.getElementById("voice-status-label").innerText = "Voice recognized (Local Mode)! Review before saving:";
 }
 
+// ===== confirmVoiceTransaction (L2668-L2696) =====
 function confirmVoiceTransaction() {
   const amount = parseFloat(document.getElementById("voice-res-amount").value);
   const category = document.getElementById("voice-res-category").value;
   const merchant = document.getElementById("voice-res-desc").value.trim();
-  const date = new Date().toISOString().split("T")[0];
+  const date = voiceParsedDate || new Date().toISOString().split("T")[0];
 
   if (!amount || amount <= 0 || !merchant) {
     alert("Please review fields and enter valid transaction details.");
@@ -2268,7 +2747,7 @@ function confirmVoiceTransaction() {
 
   appState.transactions.push({
     id: "tx-voice-" + Date.now(),
-    type: "expense",
+    type: voiceParsedType,
     amount,
     currency: appState.user.currency,
     category,
@@ -2284,16 +2763,18 @@ function confirmVoiceTransaction() {
   renderDashboard();
   showToast("Voice transaction confirmed & saved!");
 }
+// ===== end confirmVoiceTransaction (L2696) =====
 
 // --- AI FINANCIAL ADVISOR & SPENDING AUDIT ---
+// ===== generateAiAdvisorAudit (L2701-L2780) =====
 async function generateAiAdvisorAudit() {
   const btn = document.getElementById("btn-run-ai-audit");
   const btnText = document.getElementById("btn-run-ai-audit-text");
-  const origText = btnText ? btnText.innerText : "Run Real-Time AI Audit";
+  const origText = btnText ? btnText.innerText : "Analyze finances";
 
   if (btn) {
     btn.disabled = true;
-    if (btnText) btnText.innerText = "Analyzing with Nemotron & Gemini...";
+    if (btnText) btnText.innerText = "Analyzing finances...";
   }
 
   try {
@@ -2366,6 +2847,7 @@ Analyze this financial summary and return ONLY valid JSON matching this schema:
   "recommendations": ["Actionable step 1", "Actionable step 2"],
   "budgetAlerts": ["Alert on high category"]
 }
+// ===== end generateAiAdvisorAudit (L2780) =====
 Financial Profile:
 ${JSON.stringify({
   currency: appState.user.currency,
@@ -2484,7 +2966,7 @@ ${JSON.stringify({
       }
     }
 
-    showToast("AI Financial Audit updated via Nemotron & Gemini!");
+    showToast("Financial insights updated!");
   } catch (err) {
     console.error("AI Advisor error:", err);
     showToast("AI Advisor service unavailable. Please check server.");
@@ -2497,6 +2979,7 @@ ${JSON.stringify({
 }
 
 // Check AI Service Connectivity
+// ===== checkAiStatus (L2914-L2929) =====
 async function checkAiStatus() {
   try {
     const res = await fetch('/api/ai/status');
@@ -2513,12 +2996,16 @@ async function checkAiStatus() {
     console.log('AI status check offline:', e.message);
   }
 }
+// ===== end checkAiStatus (L2929) =====
 
 // --- FINANCIAL REPORTS & CUSTOM DATE RANGE ---
+// ===== renderReports (L2934-L2936) =====
 function renderReports() {
   generateReport();
 }
+// ===== end renderReports (L2936) =====
 
+// ===== handleReportPeriodChange (L2940-L2949) =====
 function handleReportPeriodChange() {
   const period = document.getElementById("report-period-type").value;
   const customBox = document.getElementById("custom-date-container");
@@ -2529,7 +3016,9 @@ function handleReportPeriodChange() {
     generateReport();
   }
 }
+// ===== end handleReportPeriodChange (L2949) =====
 
+// ===== generateReport (L2953-L3046) =====
 function generateReport() {
   const period = document.getElementById("report-period-type").value;
   let startDate = "";
@@ -2570,6 +3059,11 @@ function generateReport() {
   const netSurplus = grossInflow - grossOutflow;
   const savingsRate = grossInflow > 0 ? Math.max(0, ((netSurplus / grossInflow) * 100)).toFixed(1) : 0;
 
+  const showSummary = document.getElementById("report-show-summary")?.checked !== false;
+  const showCategories = document.getElementById("report-show-categories")?.checked !== false;
+  document.getElementById("report-summary-section")?.classList.toggle("hidden", !showSummary);
+  document.getElementById("report-category-section")?.classList.toggle("hidden", !showCategories);
+
   document.getElementById("report-gross-income").innerText = `${formatMoney(grossInflow)} ${getCurrencySymbol()}`;
   document.getElementById("report-gross-expenses").innerText = `${formatMoney(grossOutflow)} ${getCurrencySymbol()}`;
   document.getElementById("report-net-surplus").innerText = `${formatMoney(netSurplus)} ${getCurrencySymbol()}`;
@@ -2603,8 +3097,32 @@ function generateReport() {
     `;
     tbody.appendChild(tr);
   });
-}
 
+  // Populate tfoot totals
+  let totalTarget = 0;
+  appState.categories.filter(c => c.type === "expense").forEach(c => { totalTarget += (c.budget || 0); });
+  const totalVariance = totalTarget - grossOutflow;
+  const tfootEls = {
+    budget: document.getElementById("report-total-budget"),
+    spent: document.getElementById("report-total-spent"),
+    variance: document.getElementById("report-total-variance"),
+    pct: document.getElementById("report-total-pct")
+  };
+  if (tfootEls.budget) tfootEls.budget.innerText = `${formatMoney(totalTarget)} ${getCurrencySymbol()}`;
+  if (tfootEls.spent) tfootEls.spent.innerText = `${formatMoney(grossOutflow)} ${getCurrencySymbol()}`;
+  if (tfootEls.variance) tfootEls.variance.innerText = `${totalVariance >= 0 ? '+' : ''}${formatMoney(totalVariance)} ${getCurrencySymbol()}`;
+  if (tfootEls.pct) tfootEls.pct.innerText = "100%";
+}
+// ===== end generateReport (L3046) =====
+
+// --- METRIC CARD EXPAND TOGGLE ---
+// ===== toggleStatCard (L3051-L3053) =====
+function toggleStatCard(cardEl) {
+  cardEl.classList.toggle("expanded");
+}
+// ===== end toggleStatCard (L3053) =====
+
+// ===== exportReportCSV (L3057-L3084) =====
 function exportReportCSV() {
   let csvContent = "data:text/csv;charset=utf-8,";
   csvContent += "ID,Type,Merchant/Source,Category,Date,Amount,Currency,Notes,InputMethod\n";
@@ -2633,12 +3151,16 @@ function exportReportCSV() {
   document.body.removeChild(link);
   showToast("Financial CSV statement downloaded.");
 }
+// ===== end exportReportCSV (L3084) =====
 
+// ===== printReport (L3088-L3090) =====
 function printReport() {
   window.print();
 }
+// ===== end printReport (L3090) =====
 
 // --- OPTIONAL AI FINANCIAL ADVISOR (FR-39 to FR-44) ---
+// ===== renderAiInsights (L3095-L3183) =====
 function renderAiInsights() {
   const toggleBtn = document.getElementById("btn-ai-toggle");
   const circle = document.getElementById("ai-toggle-circle");
@@ -2728,15 +3250,19 @@ function renderAiInsights() {
 
   lucide.createIcons();
 }
+// ===== end renderAiInsights (L3183) =====
 
+// ===== toggleAiAssistant (L3187-L3192) =====
 function toggleAiAssistant() {
   appState.user.aiEnabled = !appState.user.aiEnabled;
   saveState();
   renderAiInsights();
   showToast(appState.user.aiEnabled ? "AI Financial Assistant enabled." : "AI analysis disabled.");
 }
+// ===== end toggleAiAssistant (L3192) =====
 
 // --- NOTIFICATIONS CENTER ---
+// ===== renderNotifications (L3197-L3226) =====
 function renderNotifications() {
   const list = document.getElementById("notif-list");
   const badge = document.getElementById("notif-badge");
@@ -2756,7 +3282,7 @@ function renderNotifications() {
 
   appState.notifications.forEach(notif => {
     const item = document.createElement("div");
-    item.className = `p-2.5 rounded-lg text-xs ${notif.read ? 'bg-slate-50 dark:bg-slate-800/40' : 'bg-brand-50 dark:bg-brand-950/40 border-l-2 border-brand-500'}`;
+    item.className = `p-2.5 rounded-lg text-xs ${notif.read ? 'bg-slate-50 dark:bg-slate-800/40' : 'bg-lavender-50 dark:bg-lavender-500/15 border-l-2 border-lavender-500'}`;
     item.innerHTML = `
       <div class="flex justify-between font-bold text-slate-800 dark:text-slate-200">
         <span>${escapeHtml(notif.title)}</span>
@@ -2767,7 +3293,9 @@ function renderNotifications() {
     list.appendChild(item);
   });
 }
+// ===== end renderNotifications (L3226) =====
 
+// ===== toggleNotificationDrawer (L3230-L3238) =====
 function toggleNotificationDrawer() {
   const dd = document.getElementById("notif-dropdown");
   dd.classList.toggle("hidden");
@@ -2777,24 +3305,32 @@ function toggleNotificationDrawer() {
     renderNotifications();
   }
 }
+// ===== end toggleNotificationDrawer (L3238) =====
 
+// ===== clearNotifications (L3242-L3247) =====
 function clearNotifications() {
   appState.notifications = [];
   saveState();
   renderNotifications();
   showToast("Notifications cleared.");
 }
+// ===== end clearNotifications (L3247) =====
 
 // --- MODAL UTILITIES ---
+// ===== openModal (L3252-L3255) =====
 function openModal(id) {
   document.getElementById(id).classList.remove("hidden");
   lucide.createIcons();
 }
+// ===== end openModal (L3255) =====
 
+// ===== closeModal (L3259-L3261) =====
 function closeModal(id) {
   document.getElementById(id).classList.add("hidden");
 }
+// ===== end closeModal (L3261) =====
 
+// ===== openTransactionModal (L3265-L3273) =====
 function openTransactionModal() {
   document.getElementById("form-transaction").reset();
   document.getElementById("tx-edit-id").value = "";
@@ -2804,61 +3340,154 @@ function openTransactionModal() {
   setTxType("expense");
   openModal("modal-transaction");
 }
+// ===== end openTransactionModal (L3273) =====
 
+// ===== openOcrModal (L3277-L3282) =====
 function openOcrModal() {
   document.getElementById("ocr-upload-box").classList.remove("hidden");
   document.getElementById("ocr-progress-container").classList.add("hidden");
   document.getElementById("ocr-review-container").classList.add("hidden");
   openModal("modal-ocr");
 }
+// ===== end openOcrModal (L3282) =====
 
+// --- DATA INPUT: DRAG & DROP + CLIPBOARD PASTE ---
+// ===== setupDataInputDropzone (L3287-L3304) =====
+function setupDataInputDropzone() {
+  const dz = document.getElementById("data-input-dropzone");
+  if (!dz || dz.dataset.bound === "1") return;
+  dz.dataset.bound = "1";
+
+  dz.addEventListener("click", () => openOcrModal());
+  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("border-brand-500"); });
+  dz.addEventListener("dragleave", () => dz.classList.remove("border-brand-500"));
+  dz.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dz.classList.remove("border-brand-500");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
+      openOcrModal();
+      handleReceiptUpload({ file });
+    }
+  });
+}
+// ===== end setupDataInputDropzone (L3304) =====
+
+window.addEventListener("paste", (e) => {
+  const dataInput = document.getElementById("view-data-input");
+  const dataInputActive = dataInput && !dataInput.classList.contains("hidden");
+  const ocrModal = document.getElementById("modal-ocr");
+  const ocrActive = ocrModal && !ocrModal.classList.contains("hidden");
+  if (!dataInputActive && !ocrActive) return;
+
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type && item.type.indexOf("image") !== -1) {
+      const file = item.getAsFile();
+      if (file) {
+        e.preventDefault();
+        if (!ocrActive) openOcrModal();
+        handleReceiptUpload({ file });
+        showToast("Pasted image captured for OCR!");
+        break;
+      }
+    }
+  }
+});
+
+// ===== openVoiceModal (L3331-L3335) =====
 function openVoiceModal() {
   document.getElementById("voice-review-container").classList.add("hidden");
   document.getElementById("voice-status-label").innerText = "Click microphone to speak";
   openModal("modal-voice");
 }
+// ===== end openVoiceModal (L3335) =====
 
+// ===== openNewGoalModal (L3339-L3341) =====
 function openNewGoalModal() {
   openModal("modal-savings");
 }
+// ===== end openNewGoalModal (L3341) =====
 
+// ===== openNewRecurringModal (L3345-L3349) =====
 function openNewRecurringModal() {
   populateCategorySelect("rec-category", "expense");
   document.getElementById("rec-date").value = new Date().toISOString().split("T")[0];
   openModal("modal-recurring");
 }
+// ===== end openNewRecurringModal (L3349) =====
 
+// ===== openAddCategoryBudgetModal (L3353-L3378) =====
 function openAddCategoryBudgetModal() {
-  promptEditCategoryBudget("food");
+  const name = prompt("Create a category name:");
+  if (!name || !name.trim()) return;
+  const nameTrimmed = name.trim();
+  const duplicate = appState.categories.some(c => c.name.toLowerCase() === nameTrimmed.toLowerCase());
+  if (duplicate) {
+    showToast("A category with that name already exists.");
+    return;
+  }
+  const budgetInput = prompt(`Monthly budget limit for "${nameTrimmed}" (0 for no limit):`, "0");
+  const budget = Math.max(0, parseFloat(budgetInput) || 0);
+  const id = `${nameTrimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${Date.now().toString().slice(-4)}`;
+  appState.categories.push({
+    id,
+    name: nameTrimmed,
+    type: "expense",
+    budget,
+    icon: "tag",
+    color: "#6366f1"
+  });
+  saveState();
+  renderBudgets();
+  renderTransactionsTable();
+  initCategoriesDropdowns();
+  showToast(`${nameTrimmed} category created.`);
 }
+// ===== end openAddCategoryBudgetModal (L3378) =====
 
+// ===== openSettingsModal (L3382-L3388) =====
 function openSettingsModal() {
   document.getElementById("pref-user-name").value = appState.user.name;
   document.getElementById("pref-warning-threshold").value = appState.user.warningThreshold || 80;
+  const curSel = document.getElementById("pref-currency");
+  if (curSel) curSel.value = appState.user.currency || "SAR";
   const keyInput = document.getElementById("pref-gemini-key");
   if (keyInput) keyInput.value = appState.user.geminiApiKey || "";
   openModal("modal-settings");
 }
+// ===== end openSettingsModal (L3388) =====
 
+// ===== savePreferences (L3392-L3408) =====
 function savePreferences() {
   const name = document.getElementById("pref-user-name").value.trim();
   const threshold = parseInt(document.getElementById("pref-warning-threshold").value) || 80;
+  const curSel = document.getElementById("pref-currency");
+  const currency = curSel ? curSel.value : (appState.user.currency || "SAR");
   const keyInput = document.getElementById("pref-gemini-key");
   const geminiKey = keyInput ? keyInput.value.trim() : "";
 
   if (name) {
+    const prevCurrency = appState.user.currency;
     appState.user.name = name;
     appState.user.warningThreshold = threshold;
+    appState.user.currency = currency;
     appState.user.geminiApiKey = geminiKey;
     saveState();
     document.getElementById("sidebar-user-name").innerText = name;
     closeModal("modal-settings");
+    if (typeof changeCurrency === "function" && currency !== prevCurrency) {
+      changeCurrency(currency);
+    }
     renderDashboard();
     showToast(geminiKey ? "Preferences & Gemini Key saved!" : "Preferences saved.");
   }
 }
+// ===== end savePreferences (L3408) =====
 
 // --- THEME UTILITIES ---
+// ===== initTheme (L3413-L3421) =====
 function initTheme() {
   if (appState.user.theme === "dark" || (!appState.user.theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
     document.documentElement.classList.add("dark");
@@ -2868,7 +3497,9 @@ function initTheme() {
     document.getElementById("theme-icon").setAttribute("data-lucide", "moon");
   }
 }
+// ===== end initTheme (L3421) =====
 
+// ===== toggleDarkMode (L3425-L3432) =====
 function toggleDarkMode() {
   const isDark = document.documentElement.classList.toggle("dark");
   appState.user.theme = isDark ? "dark" : "light";
@@ -2877,13 +3508,17 @@ function toggleDarkMode() {
   lucide.createIcons();
   renderDashboard();
 }
+// ===== end toggleDarkMode (L3432) =====
 
 // --- HELPER DROPDOWN POPULATION ---
+// ===== initCategoriesDropdowns (L3437-L3440) =====
 function initCategoriesDropdowns() {
   populateCategorySelect("tx-category", "expense");
   populateCategorySelect("tx-filter-category", "all", true);
 }
+// ===== end initCategoriesDropdowns (L3440) =====
 
+// ===== populateCategorySelect (L3444-L3464) =====
 function populateCategorySelect(elementId, type = "all", includeAllOption = false) {
   const select = document.getElementById(elementId);
   if (!select) return;
@@ -2905,7 +3540,9 @@ function populateCategorySelect(elementId, type = "all", includeAllOption = fals
     }
   });
 }
+// ===== end populateCategorySelect (L3464) =====
 
+// ===== showToast (L3468-L3477) =====
 function showToast(message) {
   const toast = document.getElementById("toast");
   const msgEl = document.getElementById("toast-msg");
@@ -2916,7 +3553,9 @@ function showToast(message) {
     toast.classList.add("translate-y-20", "opacity-0");
   }, 2800);
 }
+// ===== end showToast (L3477) =====
 
+// ===== escapeHtml (L3481-L3488) =====
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)
@@ -2925,12 +3564,14 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+// ===== end escapeHtml (L3488) =====
 
 // --- LIVE CAMERA SCANNER & MOBILE WEB EXTENSIONS ---
 let cameraStream = null;
 let currentFacingMode = "environment"; // default to rear camera on mobile phones
 let isTorchOn = false;
 
+// ===== openLiveCamera (L3497-L3542) =====
 async function openLiveCamera() {
   triggerHaptic(25);
   const modal = document.getElementById("modal-live-camera");
@@ -2977,7 +3618,9 @@ async function openLiveCamera() {
     }
   }
 }
+// ===== end openLiveCamera (L3542) =====
 
+// ===== closeLiveCamera (L3546-L3554) =====
 function closeLiveCamera() {
   triggerHaptic(15);
   if (cameraStream) {
@@ -2987,13 +3630,17 @@ function closeLiveCamera() {
   isTorchOn = false;
   document.getElementById("modal-live-camera").classList.add("hidden");
 }
+// ===== end closeLiveCamera (L3554) =====
 
+// ===== toggleCameraFacing (L3558-L3562) =====
 async function toggleCameraFacing() {
   triggerHaptic(20);
   currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
   await openLiveCamera();
 }
+// ===== end toggleCameraFacing (L3562) =====
 
+// ===== toggleTorch (L3566-L3590) =====
 async function toggleTorch() {
   triggerHaptic(20);
   if (!cameraStream) return;
@@ -3019,7 +3666,9 @@ async function toggleTorch() {
     showToast("Flashlight control unavailable on this camera stream.");
   }
 }
+// ===== end toggleTorch (L3590) =====
 
+// ===== captureCameraSnapshot (L3594-L3631) =====
 function captureCameraSnapshot() {
   triggerHaptic(40);
   const video = document.getElementById("camera-video");
@@ -3058,31 +3707,214 @@ function captureCameraSnapshot() {
     }
   }, "image/jpeg", 0.92);
 }
+// ===== end captureCameraSnapshot (L3631) =====
 
 // --- MOBILE BOTTOM SHEETS & HAPTIC VIBRATION ---
+// ===== triggerHaptic (L3636-L3640) =====
 function triggerHaptic(ms = 15) {
   if (navigator.vibrate) {
     try { navigator.vibrate(ms); } catch (e) {}
   }
 }
+// ===== end triggerHaptic (L3640) =====
 
+// ===== openMobileQuickActions (L3644-L3648) =====
 function openMobileQuickActions() {
   triggerHaptic(15);
   document.getElementById("mobile-quick-actions-sheet").classList.remove("hidden");
   lucide.createIcons();
 }
+// ===== end openMobileQuickActions (L3648) =====
 
+// ===== closeMobileQuickActions (L3652-L3654) =====
 function closeMobileQuickActions() {
   document.getElementById("mobile-quick-actions-sheet").classList.add("hidden");
 }
+// ===== end closeMobileQuickActions (L3654) =====
 
+// ===== openMobileMore (L3658-L3662) =====
 function openMobileMore() {
   triggerHaptic(15);
   document.getElementById("mobile-more-sheet").classList.remove("hidden");
   lucide.createIcons();
 }
+// ===== end openMobileMore (L3662) =====
 
+// ===== closeMobileMore (L3666-L3668) =====
 function closeMobileMore() {
   document.getElementById("mobile-more-sheet").classList.add("hidden");
 }
+// ===== end closeMobileMore (L3668) =====
 
+// --- MULTI-ACCOUNT MANAGEMENT ---
+// ===== getAccounts (L3673-L3682) =====
+function getAccounts() {
+  const stored = localStorage.getItem("sbs_accounts");
+  if (stored) {
+    try { return JSON.parse(stored); } catch(e) {}
+  }
+  return [
+    { id: "acc-1", name: "Sarah Al-Mansoor", email: "sarah@university.edu", currency: "SAR" },
+    { id: "acc-2", name: "Personal Savings", email: "savings@sbs.local", currency: "USD" }
+  ];
+}
+// ===== end getAccounts (L3682) =====
+
+// ===== getActiveAccountId (L3686-L3688) =====
+function getActiveAccountId() {
+  return localStorage.getItem("sbs_active_account_id") || "acc-1";
+}
+// ===== end getActiveAccountId (L3688) =====
+
+// ===== switchAccount (L3692-L3702) =====
+function switchAccount(accId) {
+  localStorage.setItem("sbs_active_account_id", accId);
+  const accounts = getAccounts();
+  const acc = accounts.find(a => a.id === accId) || accounts[0];
+  appState.user.name = acc.name;
+  appState.user.email = acc.email;
+  appState.user.currency = acc.currency || "SAR";
+  saveState();
+  refreshApp();
+  closeAccountSwitcher();
+  showToast(`Switched to account: ${acc.name}`);
+}
+// ===== end switchAccount (L3702) =====
+
+// ===== toggleAccountSwitcherDropdown (L3706-L3735) =====
+function closeAccountSwitcher() {
+  const dd = document.getElementById("account-switcher-dropdown");
+  if (dd) dd.classList.add("hidden");
+}
+
+function toggleAccountSwitcherDropdown() {
+  let dd = document.getElementById("account-switcher-dropdown");
+  if (!dd) {
+    dd = document.createElement("div");
+    dd.id = "account-switcher-dropdown";
+    dd.className = "fixed left-0 bottom-20 w-64 max-w-[calc(100vw-1rem)] bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-[60] space-y-2";
+    document.body.appendChild(dd);
+
+    // Close when clicking outside (but not on the trigger button)
+    if (!window._acctOutsideBound) {
+      window._acctOutsideBound = true;
+      document.addEventListener("click", (e) => {
+        const d = document.getElementById("account-switcher-dropdown");
+        if (!d || d.classList.contains("hidden")) return;
+        if (d.contains(e.target)) return;
+        const t = e.target;
+        if (t && t.closest && t.closest('button[onclick*="toggleAccountSwitcherDropdown"]')) return;
+        d.classList.add("hidden");
+      });
+    }
+  }
+  const accounts = getAccounts();
+  const activeId = getActiveAccountId();
+  dd.innerHTML = `
+    <div class="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 text-xs font-bold">
+      <span>Accounts (${accounts.length})</span>
+      <button onclick="createNewAccount()" class="text-lavender-600 hover:underline">+ Add Account</button>
+    </div>
+    <div class="space-y-1">
+      ${accounts.map(a => `
+        <div onclick="switchAccount('${a.id}')" class="flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs ${a.id === activeId ? 'bg-lavender-50 dark:bg-lavender-500/20 text-lavender-700 dark:text-lavender-300 font-bold' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}">
+          <div>
+            <p>${escapeHtml(a.name)}</p>
+            <p class="text-[10px] text-slate-400">${escapeHtml(a.email)}</p>
+          </div>
+          ${a.id === activeId ? '<i data-lucide="check" class="w-3.5 h-3.5"></i>' : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
+  dd.classList.toggle("hidden");
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+// ===== end toggleAccountSwitcherDropdown (L3735) =====
+
+// ===== createNewAccount (L3739-L3748) =====
+function createNewAccount() {
+  const name = prompt("Enter new account name:");
+  if (!name || !name.trim()) return;
+  const email = prompt("Enter account email:", "user@university.edu") || "user@sbs.local";
+  const accounts = getAccounts();
+  const newAcc = { id: "acc-" + Date.now(), name: name.trim(), email: email.trim(), currency: "SAR" };
+  accounts.push(newAcc);
+  localStorage.setItem("sbs_accounts", JSON.stringify(accounts));
+  switchAccount(newAcc.id);
+}
+// ===== end createNewAccount (L3748) =====
+
+// --- STREAMLINED ADD TRANSACTION CHOICE MODAL (SMART CAPTURE) ---
+// ===== openAddTransactionChoiceModal (L3753-L3822) =====
+function openAddTransactionChoiceModal() {
+  let modal = document.getElementById("modal-add-choice");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "modal-add-choice";
+    modal.className = "fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 hidden";
+    modal.innerHTML = `
+      <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="w-9 h-9 rounded-xl accent-gloss flex items-center justify-center">
+              <i data-lucide="zap" class="w-5 h-5"></i>
+            </span>
+            <div>
+              <h3 class="font-bold text-slate-900 dark:text-white text-base">Smart Capture</h3>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400">Add a transaction your way</p>
+            </div>
+          </div>
+          <button onclick="document.getElementById('modal-add-choice').classList.add('hidden')" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+
+        <!-- Dropzone -->
+        <div id="add-choice-dropzone" class="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-brand-500 dark:hover:border-brand-400 rounded-2xl p-6 text-center bg-slate-50/60 dark:bg-slate-800/40 transition cursor-pointer group">
+          <div class="flex flex-col items-center justify-center space-y-1.5">
+            <div class="w-11 h-11 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-600 dark:text-brand-400 flex items-center justify-center group-hover:scale-110 transition">
+              <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+            </div>
+            <h4 class="text-sm font-bold text-slate-800 dark:text-slate-200">Drop image or paste (Ctrl+V)</h4>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">JPEG, PNG, WebP</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-2.5">
+          <button onclick="document.getElementById('modal-add-choice').classList.add('hidden'); openTransactionModal();" class="flex items-center space-x-3 w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition text-xs font-bold">
+            <i data-lucide="plus-circle" class="w-5 h-5"></i>
+            <div class="text-left"><p>Manual Entry</p><p class="text-[10px] text-slate-500 font-normal">Type amount, category, and merchant details</p></div>
+          </button>
+          <button onclick="document.getElementById('modal-add-choice').classList.add('hidden'); openOcrModal();" class="flex items-center space-x-3 w-full p-3 rounded-xl bg-lime-100 dark:bg-lime-600/20 text-lime-800 dark:text-lime-300 hover:bg-lime-200 dark:hover:bg-lime-600/30 transition text-xs font-bold">
+            <i data-lucide="camera" class="w-5 h-5"></i>
+            <div class="text-left"><p>Scan Receipt (AI Vision OCR)</p><p class="text-[10px] text-slate-500 font-normal">Camera, upload, or paste a receipt</p></div>
+          </button>
+          <button onclick="document.getElementById('modal-add-choice').classList.add('hidden'); openVoiceModal();" class="flex items-center space-x-3 w-full p-3 rounded-xl bg-lavender-100 dark:bg-lavender-600/20 text-lavender-600 dark:text-lavender-300 hover:bg-lavender-200 dark:hover:bg-lavender-600/30 transition text-xs font-bold">
+            <i data-lucide="mic" class="w-5 h-5"></i>
+            <div class="text-left"><p>Voice Dictation & Audio</p><p class="text-[10px] text-slate-500 font-normal">Speak or record expense phrases</p></div>
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const dz = modal.querySelector("#add-choice-dropzone");
+    if (dz) {
+      dz.addEventListener("click", () => { document.getElementById("modal-add-choice").classList.add("hidden"); openOcrModal(); });
+      dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("border-brand-500"); });
+      dz.addEventListener("dragleave", () => dz.classList.remove("border-brand-500"));
+      dz.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dz.classList.remove("border-brand-500");
+        const file = e.dataTransfer?.files?.[0];
+        if (file) {
+          document.getElementById("modal-add-choice").classList.add("hidden");
+          openOcrModal();
+          handleReceiptUpload({ file });
+        }
+      });
+    }
+  }
+  modal.classList.remove("hidden");
+  if (typeof lucide !== "undefined") lucide.createIcons();
+}
+// ===== end openAddTransactionChoiceModal (L3822) =====

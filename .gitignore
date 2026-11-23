@@ -1,5 +1,28 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+*.env
+!.env.example
+
+# Logs
+*.log
+*.log.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Python / companion project caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# SBS SMART is a separate companion Flask project (nested repo), not bundled here
+SBS SMART/
+
+# Local binaries / scripts
 cloudflared.exe
 create_repo.ps1
-node_modules/
-*.log
-.env

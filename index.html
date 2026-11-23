@@ -1,9 +1,38 @@
 <!DOCTYPE html>
+<!--
+============================================================================
+ Super Budgeting System (SBS) — index.html  (structure & styling map)
+============================================================================
+ HEAD (L3–~L508)      : meta, Tailwind config (lime/lavender/obsidian theme),
+                        Lucide + Chart.js + Tesseract CDN, and all custom CSS
+                        (sidebar rail/hover, hero, stat-card expand, print CSS).
+ BODY (L509–end)      : app shell
+   SIDEBAR  (L509–599) : obsidian nav rail — logo, "New Entry", nav items,
+                        account switcher, settings.
+   HEADER   (L600–671) : breadcrumb, currency, AI status, theme toggle,
+                        "Add Transaction" (opens Smart Capture modal).
+   MAIN VIEWS (page-view sections, toggled by navigateTo in app.js):
+     SECTION 1   DASHBOARD ............ L675  (hero, stat cards, charts,
+                                              AI advisor, recent tx/previews)
+     SECTION 1.5 DATA INPUT & CAPTURE . L1014 (drag/drop, Ctrl+V, scan, voice)
+     SECTION 2   TRANSACTIONS ......... L1051
+     SECTION 3   BUDGETS & LIMITS ..... L1107
+     SECTION 4   SAVINGS GOALS ........ L1139
+     SECTION 5   RECURRING BILLS ...... L1157
+     SECTION 6   FINANCIAL REPORTS .... L1199 (print/PDF template #print-report-area)
+     SECTION 7   AI ASSISTANT ....... L1323
+   MODALS (~L1431–2041) : transaction, OCR, voice, goal, recurring, settings,
+                        receipt-detail dialogs.
+   MOBILE (~L2042–2171) : bottom nav + quick-actions / more sheets.
+   SCRIPTS (L2172+)     : app.js.
+ NOTE: Line numbers are a snapshot; re-check after edits.
+============================================================================
+-->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#2563eb">
+  <meta name="theme-color" content="#1E1F22">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SuperBudget">
@@ -19,13 +48,57 @@
         extend: {
           colors: {
             brand: {
-              50: '#eff6ff',
-              100: '#dbeafe',
-              500: '#3b82f6',
-              600: '#2563eb',
-              700: '#1d4ed8',
-              800: '#1e40af',
-              900: '#1e3a8a',
+              50: '#F2F0F2',
+              100: '#E2DFE2',
+              200: '#C9C1C6',
+              300: '#A89FA4',
+              400: '#7A7076',
+              500: '#4A3F44',
+              600: '#2E2529',
+              700: '#281C20',
+              800: '#1E1518',
+              900: '#141518',
+            },
+            lime: {
+              50: '#F7FEE7',
+              100: '#ECFCCB',
+              200: '#E4F993',
+              300: '#D9F99D',
+              400: '#D4ED76',
+              500: '#B9E36B',
+              600: '#8FB84A',
+              700: '#3F6212',
+              800: '#23281A',
+            },
+            lavender: {
+              50: '#EEF2FF',
+              100: '#E0E7FF',
+              200: '#C7D2FE',
+              300: '#A5B4FC',
+              400: '#818CF8',
+              500: '#6366F1',
+              600: '#4F46E5',
+              700: '#4338CA',
+            },
+            cobalt: {
+              50: '#EFF6FF',
+              100: '#DBEAFE',
+              200: '#BFDBFE',
+              300: '#93C5FD',
+              400: '#60A5FA',
+              500: '#3B82F6',
+              600: '#2563EB',
+              700: '#1D4ED8',
+            },
+            coral: {
+              50: '#FEF2F2',
+              100: '#FEE2E2',
+              200: '#FECACA',
+              300: '#FCA5A5',
+              400: '#F87171',
+              500: '#EF4444',
+              600: '#DC2626',
+              700: '#991B1B',
             }
           }
         }
@@ -41,13 +114,341 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     body {
-      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-family: 'Manrope', 'Plus Jakarta Sans', sans-serif;
+      background:
+        radial-gradient(circle at 12% 15%, rgba(48, 20, 27, 0.12) 0%, transparent 55%),
+        radial-gradient(circle at 88% 85%, rgba(185, 28, 28, 0.08) 0%, transparent 58%),
+        linear-gradient(160deg, #DFDBDE 0%, #D5D0D4 100%);
+    }
+    .dark body {
+      background:
+        radial-gradient(circle at 12% 15%, rgba(129, 140, 248, 0.05) 0%, transparent 55%),
+        radial-gradient(circle at 88% 85%, rgba(168, 85, 247, 0.05) 0%, transparent 58%),
+        #18171C;
+    }
+
+    #sidebar {
+      background: linear-gradient(180deg, #292024 0%, #20191C 100%) !important;
+      border-right: 1px solid #2B2226 !important;
+      box-shadow: 8px 0 40px rgba(0, 0, 0, 0.18);
+    }
+    .dark #sidebar {
+      background: #18171C !important;
+      border-right: 1px solid #26252C !important;
+      box-shadow: 8px 0 40px rgba(0, 0, 0, 0.4);
+    }
+    #sidebar .nav-item {
+      position: relative;
+      border-radius: 12px;
+      margin-bottom: 2px;
+      color: #A89FA4;
+    }
+    #sidebar .nav-item:hover {
+      color: #FFFFFF;
+      background: #332A2E;
+    }
+    #sidebar .nav-item.active {
+      color: #23281A !important;
+      background: linear-gradient(135deg, #ECFCAA 0%, #E4F993 55%, #D4ED76 100%) !important;
+      font-weight: 700;
+      box-shadow: 0 8px 20px rgba(228, 249, 147, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    }
+    #sidebar .nav-item.active:hover {
+      background: linear-gradient(135deg, #F4FDC4 0%, #ECFCAA 55%, #E4F993 100%) !important;
+      color: #23281A !important;
+    }
+    #sidebar .nav-item.active::before {
+      content: "";
+      position: absolute;
+      left: -12px;
+      width: 3px;
+      height: 24px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #D4ED76, #A3E635);
+    }
+    #sidebar .sidebar-brand-text h1 { color: #FFFFFF; }
+    #sidebar .sidebar-badge {
+      background: #332A2E !important;
+      color: #E4F993 !important;
+    }
+    #sidebar .sidebar-user {
+      background: #332A2E !important;
+    }
+    #sidebar .sidebar-user-info p { color: #FFFFFF !important; }
+    #sidebar .sidebar-user-info p.text-xs { color: #A89FA4 !important; }
+    #sidebar .sidebar-footer-actions button,
+    #sidebar .sidebar-toggle-icon {
+      color: #A89FA4 !important;
+    }
+    #sidebar .sidebar-footer-actions button:hover,
+    #sidebar .sidebar-toggle-icon:hover {
+      color: #FFFFFF !important;
+    }
+    #sidebar .sidebar-brand,
+    #sidebar .sidebar-footer {
+      border-color: #332A2E !important;
+    }
+
+    /* Collapsible Sidebar (hover to expand + pin) */
+    #sidebar {
+      transition: width 0.32s cubic-bezier(.22, 1, .36, 1);
+      overflow-x: hidden;
+    }
+    @media (min-width: 768px) {
+      #sidebar { width: 5rem; }
+      body.sidebar-expanded #sidebar { width: 16rem; }
+      body:not(.sidebar-expanded) #sidebar .sidebar-label,
+      body:not(.sidebar-expanded) #sidebar .sidebar-brand-text,
+      body:not(.sidebar-expanded) #sidebar .sidebar-badge,
+      body:not(.sidebar-expanded) #sidebar .sidebar-user-info,
+      body:not(.sidebar-expanded) #sidebar .sidebar-footer-actions,
+      body:not(.sidebar-expanded) #sidebar .sidebar-brand .sidebar-toggle-icon {
+        display: none;
+      }
+      body:not(.sidebar-expanded) #sidebar .sidebar-brand { justify-content: center; }
+      body:not(.sidebar-expanded) #sidebar .nav-item { justify-content: center; }
+      body:not(.sidebar-expanded) #sidebar .nav-item i { margin-right: 0 !important; }
+      body:not(.sidebar-expanded) #sidebar .sidebar-user { justify-content: center; }
+      body:not(.sidebar-expanded) #sidebar .sidebar-new-btn span { display: none; }
+      body:not(.sidebar-expanded) #sidebar .nav-item.active::before { left: -6px; }
+    }
+
+    /* Metric card expandable hover details */
+    .premium-stat {
+      cursor: pointer;
+    }
+    .stat-card-expand {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition: max-height 0.32s cubic-bezier(.22, 1, .36, 1), opacity 0.28s ease, margin-top 0.28s ease;
+      margin-top: 0;
+    }
+    .premium-stat:hover .stat-card-expand,
+    .premium-stat.expanded .stat-card-expand {
+      max-height: 160px;
+      opacity: 1;
+      margin-top: 0.75rem;
+    }
+    .stat-card-expand-inner {
+      border-top: 1px solid rgba(148, 163, 184, 0.25);
+      padding-top: 0.75rem;
+    }
+    header {
+      background: rgba(226, 223, 226, 0.82) !important;
+      backdrop-filter: blur(22px) saturate(145%);
+      -webkit-backdrop-filter: blur(22px) saturate(145%);
+      border-bottom: 1px solid #C9C1C6;
+    }
+    .dark header {
+      background: #18171C !important;
+      border-bottom: 1px solid #26252C;
+    }
+    main {
+      scroll-behavior: smooth;
+    }
+    main > #view-dashboard > div {
+      animation: sbs-fade-up 0.48s cubic-bezier(.22, 1, .36, 1) both;
+    }
+    main > #view-dashboard > div:nth-child(2) { animation-delay: 0.05s; }
+    main > #view-dashboard > div:nth-child(3) { animation-delay: 0.1s; }
+    main > #view-dashboard > div:nth-child(4) { animation-delay: 0.15s; }
+    main > #view-dashboard > div:nth-child(5) { animation-delay: 0.2s; }
+
+    @keyframes sbs-fade-up {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes sbs-float {
+      0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+      50% { transform: translate3d(8px, -7px, 0) rotate(4deg); }
+    }
+    @keyframes sbs-pulse-ring {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.18); }
+      50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    }
+
+    /* Glossy lime accent (light + dark) */
+    .accent-gloss {
+      background-image: linear-gradient(135deg, #E9FBA6 0%, #E4F993 60%, #D4ED76 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 6px 16px rgba(163, 230, 53, 0.16);
+      color: #23281A;
+    }
+    .dark .accent-gloss {
+      background-image: linear-gradient(135deg, #E4F993 0%, #D9F99D 50%, #A5B4FC 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -2px 8px rgba(0, 0, 0, 0.22), 0 8px 24px rgba(228, 249, 147, 0.32);
+    }
+    .accent-gloss-soft {
+      background-image: linear-gradient(135deg, rgba(228, 249, 147, 0.28) 0%, rgba(96, 165, 250, 0.14) 55%, rgba(129, 140, 248, 0.22) 100%);
+    }
+    .dark .accent-gloss-soft {
+      background-image: linear-gradient(135deg, rgba(228, 249, 147, 0.18) 0%, rgba(96, 165, 250, 0.12) 55%, rgba(129, 140, 248, 0.18) 100%);
+    }
+    /* Multi-color progress gradient */
+    .progress-gradient {
+      background-image: linear-gradient(90deg, #D9F99D 0%, #60A5FA 50%, #818CF8 80%, #F87171 100%);
+    }
+    .dark .progress-gradient {
+      background-image: linear-gradient(90deg, #E4F993 0%, #818CF8 45%, #60A5FA 75%, #DC2626 100%);
+    }
+
+    .premium-hero {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      min-height: 196px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background:
+        radial-gradient(circle at 14% 22%, rgba(228, 249, 147, 0.19) 0%, transparent 46%),
+        radial-gradient(circle at 86% 24%, rgba(129, 140, 248, 0.25) 0%, transparent 48%),
+        radial-gradient(circle at 52% 92%, rgba(220, 38, 38, 0.22) 0%, transparent 50%),
+        linear-gradient(135deg, #2C2125 0%, #21191D 100%);
+      box-shadow: 0 24px 54px rgba(30, 20, 24, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+    .dark .premium-hero {
+      background:
+        radial-gradient(circle at 16% 24%, rgba(228, 249, 147, 0.28) 0%, transparent 50%),
+        radial-gradient(circle at 84% 25%, rgba(129, 140, 248, 0.22) 0%, transparent 48%),
+        radial-gradient(circle at 60% 90%, rgba(220, 38, 38, 0.20) 0%, transparent 48%),
+        linear-gradient(135deg, #212026 0%, #18171C 100%);
+    }
+    .premium-hero::before,
+    .premium-hero::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      border-radius: 999px;
+      filter: blur(2px);
+    }
+    .premium-hero::before {
+      width: 280px;
+      height: 280px;
+      right: -60px;
+      top: -140px;
+      background: radial-gradient(circle, rgba(228, 249, 147, 0.4), rgba(228, 249, 147, 0));
+      animation: sbs-float 8s ease-in-out infinite;
+    }
+    .premium-hero::after {
+      width: 180px;
+      height: 180px;
+      right: 180px;
+      bottom: -140px;
+      background: radial-gradient(circle, rgba(129, 140, 248, 0.35), rgba(129, 140, 248, 0));
+    }
+    .hero-bubbles .bubble {
+      position: absolute;
+      border-radius: 9999px;
+      background: radial-gradient(circle at 32% 30%, rgba(228, 249, 147, 0.55), rgba(163, 230, 53, 0.06));
+      opacity: 0.3;
+      filter: blur(1.2px);
+      animation: bubble-float 11s ease-in-out infinite;
+      transition: translate 0.25s ease-out, opacity 0.25s ease-out;
+      will-change: transform, translate;
+    }
+    @keyframes bubble-float {
+      0%, 100% { transform: translateY(0) translateX(0) scale(1); }
+      50% { transform: translateY(-20px) translateX(10px) scale(1.1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .hero-bubbles .bubble { animation: none; }
+    }
+    .premium-stat,
+    .premium-card,
+    #ai-advisor-content,
+    #dashboard-alert-banner {
+      transition: transform 0.25s cubic-bezier(.22, 1, .36, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+    .premium-stat:hover,
+    .premium-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(228, 249, 147, 0.65);
+      box-shadow: 0 20px 42px rgba(40, 28, 32, 0.14), 0 0 22px rgba(228, 249, 147, 0.25);
+    }
+    .dark .premium-stat:hover,
+    .dark .premium-card:hover {
+      box-shadow: 0 20px 42px rgba(0, 0, 0, 0.4), 0 0 26px rgba(228, 249, 147, 0.18);
+    }
+    .premium-stat {
+      position: relative;
+      overflow: hidden;
+    }
+    .premium-card {
+      border-radius: 20px !important;
+      background: rgba(242, 240, 242, 0.90) !important;
+      border: 1px solid rgba(198, 190, 195, 0.90) !important;
+      backdrop-filter: blur(24px) saturate(160%);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      box-shadow: 0 16px 40px rgba(40, 28, 32, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    }
+    .dark .premium-card {
+      background: #1F1E24 !important;
+      border: 1px solid #2D2C35 !important;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    .premium-stat {
+      background: rgba(242, 240, 242, 0.90) !important;
+      border: 1px solid rgba(198, 190, 195, 0.90) !important;
+      backdrop-filter: blur(20px) saturate(160%);
+      -webkit-backdrop-filter: blur(20px) saturate(160%);
+      box-shadow: 0 14px 34px rgba(40, 28, 32, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.82);
+    }
+    .dark .premium-stat {
+      background: #1F1E24 !important;
+      border: 1px solid #2D2C35 !important;
+    }
+    .page-enter {
+      animation: sbs-page-enter 0.38s cubic-bezier(.22, 1, .36, 1) both;
+    }
+    @keyframes sbs-page-enter {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    #modal-transaction > div,
+    #modal-ocr > div,
+    #modal-voice > div,
+    #modal-settings > div,
+    #modal-receipt > div {
+      animation: sbs-modal-enter 0.24s cubic-bezier(.22, 1, .36, 1) both;
+    }
+    @keyframes sbs-modal-enter {
+      from { opacity: 0; transform: translateY(12px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    #ai-status-badge {
+      border-radius: 999px;
+    }
+    #ai-status-badge > span:first-child > span:last-child {
+      animation: sbs-pulse-ring 2.4s ease-in-out infinite;
+    }
+    [id$="-modal"], .fixed.rounded-2xl,
+    #modal-transaction > div,
+    #modal-ocr > div,
+    #modal-voice > div {
+      border-radius: 20px;
+    }
+    button, [role="button"], select {
+      -webkit-tap-highlight-color: transparent;
+    }
+    button:active {
+      transform: scale(0.985);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
     }
     
     /* Print Optimization for Reports */
     @media print {
+      @page {
+        size: A4;
+        margin: 14mm;
+      }
       body * {
         visibility: hidden;
       }
@@ -60,9 +461,95 @@
         top: 0;
         width: 100%;
         margin: 0;
-        padding: 20px;
+        padding: 0;
         background: white !important;
-        color: black !important;
+        color: #0f172a !important;
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+      }
+      #print-report-area .report-doc-header {
+        border-bottom: 2px solid #1E1F22 !important;
+        padding-bottom: 12px !important;
+        margin-bottom: 20px !important;
+      }
+      #print-report-area .report-brand-mark {
+        color: #1E1F22 !important;
+        font-size: 10px !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.12em !important;
+        text-transform: uppercase !important;
+      }
+      #print-report-area .report-doc-title {
+        font-size: 20px !important;
+        font-weight: 700 !important;
+        color: #0f172a !important;
+        margin-top: 2px !important;
+      }
+      #print-report-area .report-meta {
+        font-size: 10px !important;
+        color: #475569 !important;
+      }
+      #print-report-area .report-summary-grid {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 10px !important;
+        margin-bottom: 22px !important;
+      }
+      #print-report-area .report-summary-card {
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 8px !important;
+        padding: 10px 12px !important;
+        background: #f8fafc !important;
+      }
+      #print-report-area .report-summary-label {
+        font-size: 9px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.06em !important;
+        text-transform: uppercase !important;
+        color: #64748b !important;
+      }
+      #print-report-area .report-summary-value {
+        font-size: 15px !important;
+        font-weight: 700 !important;
+        margin-top: 4px !important;
+      }
+      #print-report-area table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 10px !important;
+      }
+      #print-report-area table thead th {
+        background: #f1f5f9 !important;
+        color: #334155 !important;
+        font-weight: 700 !important;
+        padding: 7px 9px !important;
+        border: 1px solid #e2e8f0 !important;
+        text-align: left !important;
+      }
+      #print-report-area table tbody td {
+        padding: 6px 9px !important;
+        border: 1px solid #e2e8f0 !important;
+        color: #1e293b !important;
+      }
+      #print-report-area table tbody tr:nth-child(even) td {
+        background: #f8fafc !important;
+      }
+      #print-report-area table tfoot td {
+        padding: 8px 9px !important;
+        border-top: 2px solid #1E1F22 !important;
+        font-weight: 700 !important;
+        background: #f1f5f9 !important;
+      }
+      #print-report-area .report-footer {
+        margin-top: 26px !important;
+        padding-top: 12px !important;
+        border-top: 1px solid #e2e8f0 !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        font-size: 9px !important;
+        color: #64748b !important;
       }
       .no-print {
         display: none !important;
@@ -95,66 +582,86 @@
     <aside id="sidebar" class="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between flex-shrink-0 z-30 transition-all duration-300">
       <div>
         <!-- Logo / App Name -->
-        <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div class="sidebar-brand p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-brand-500/30">
+            <div class="w-10 h-10 rounded-xl accent-gloss flex items-center justify-center">
               <i data-lucide="wallet" class="w-5 h-5"></i>
             </div>
-            <div>
-              <h1 class="font-bold text-lg leading-tight tracking-tight text-slate-900 dark:text-white">SuperBudget</h1>
-              <span class="text-xs font-semibold px-1.5 py-0.5 rounded bg-brand-100 dark:bg-brand-900/50 text-brand-700 dark:text-brand-300">SBS v1.0</span>
+            <div class="sidebar-brand-text">
+              <h1 class="font-bold text-lg leading-tight tracking-tight">SuperBudget</h1>
+              <span class="sidebar-badge text-xs font-semibold px-1.5 py-0.5 rounded">SBS v2.4</span>
             </div>
           </div>
+          <button onclick="toggleSidebarPin()" title="Pin Sidebar Open" class="sidebar-toggle-icon text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+            <i data-lucide="pin-off" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- New / Home Button -->
+        <div class="px-3 pt-3">
+          <button onclick="navigateTo('dashboard')" title="Go to Dashboard" class="sidebar-new-btn w-full flex items-center justify-center space-x-2 px-3 py-2.5 rounded-xl accent-gloss hover:brightness-105 font-bold text-sm transition active:scale-95">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>New Entry</span>
+          </button>
         </div>
 
         <!-- Navigation Links -->
         <nav class="p-3 space-y-1">
+          <button onclick="navigateTo('data-input')" id="nav-data-input" class="nav-item flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60">
+            <i data-lucide="scan-line" class="w-4 h-4 mr-3"></i>
+            <span class="sidebar-label">Data Input</span>
+          </button>
           <button onclick="navigateTo('dashboard')" id="nav-dashboard" class="nav-item active flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-brand-600 bg-brand-50 dark:bg-brand-900/30 dark:text-brand-400">
             <i data-lucide="layout-dashboard" class="w-4 h-4 mr-3"></i>
-            <span>Dashboard</span>
+            <span class="sidebar-label">Dashboard</span>
           </button>
           <button onclick="navigateTo('transactions')" id="nav-transactions" class="nav-item flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60">
             <i data-lucide="arrow-left-right" class="w-4 h-4 mr-3"></i>
-            <span>Transactions</span>
-            <span id="badge-tx-count" class="ml-auto text-xs bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full">0</span>
+            <span class="sidebar-label">Transactions</span>
+            <span id="badge-tx-count" class="sidebar-badge ml-auto text-xs bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full">0</span>
           </button>
           <button onclick="navigateTo('budgets')" id="nav-budgets" class="nav-item flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60">
             <i data-lucide="pie-chart" class="w-4 h-4 mr-3"></i>
-            <span>Budgets & Limits</span>
+            <span class="sidebar-label">Budgets & Limits</span>
           </button>
           <button onclick="navigateTo('savings')" id="nav-savings" class="nav-item flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60">
             <i data-lucide="piggy-bank" class="w-4 h-4 mr-3"></i>
-            <span>Savings Goals</span>
+            <span class="sidebar-label">Savings Goals</span>
           </button>
           <button onclick="navigateTo('recurring')" id="nav-recurring" class="nav-item flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60">
             <i data-lucide="refresh-cw" class="w-4 h-4 mr-3"></i>
-            <span>Recurring Bills</span>
+            <span class="sidebar-label">Recurring Bills</span>
           </button>
           <button onclick="navigateTo('reports')" id="nav-reports" class="nav-item flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60">
             <i data-lucide="file-text" class="w-4 h-4 mr-3"></i>
-            <span>Financial Reports</span>
+            <span class="sidebar-label">Financial Reports</span>
           </button>
           <button onclick="navigateTo('ai-insights')" id="nav-ai-insights" class="nav-item flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60">
             <i data-lucide="sparkles" class="w-4 h-4 mr-3 text-amber-500"></i>
-            <span>AI Assistant</span>
-            <span class="ml-auto text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">Opt-in</span>
+            <span class="sidebar-label">AI Assistant</span>
+            <span class="sidebar-badge ml-auto text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300">Smart</span>
           </button>
         </nav>
       </div>
 
       <!-- User Profile & Quick Switch -->
-      <div class="p-4 border-t border-slate-200 dark:border-slate-800">
-        <div class="flex items-center space-x-3 p-2 rounded-lg bg-slate-100 dark:bg-slate-800/60">
-          <div class="w-9 h-9 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-sm">
+      <div class="sidebar-footer p-4 border-t border-slate-200 dark:border-slate-800">
+        <div class="sidebar-user flex items-center space-x-3 p-2 rounded-lg bg-slate-100 dark:bg-slate-800/60">
+          <div class="w-9 h-9 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
             SA
           </div>
-          <div class="flex-1 min-w-0">
+          <div class="sidebar-user-info flex-1 min-w-0">
             <p class="text-sm font-semibold text-slate-900 dark:text-white truncate" id="sidebar-user-name">Sarah Al-Mansoor</p>
             <p class="text-xs text-slate-500 dark:text-slate-400 truncate" id="sidebar-user-email">sarah@university.edu</p>
           </div>
-          <button onclick="openSettingsModal()" title="Preferences" class="text-slate-400 hover:text-slate-600 dark:hover:text-white">
-            <i data-lucide="settings" class="w-4 h-4"></i>
-          </button>
+          <div class="sidebar-footer-actions flex items-center space-x-1">
+            <button onclick="toggleAccountSwitcherDropdown()" title="Switch Account" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+              <i data-lucide="users" class="w-4 h-4"></i>
+            </button>
+            <button onclick="openSettingsModal()" title="Preferences" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+              <i data-lucide="settings" class="w-4 h-4"></i>
+            </button>
+          </div>
         </div>
       </div>
     </aside>
@@ -174,26 +681,14 @@
           </div>
         </div>
 
-        <!-- Actions / Currency / New Transaction Buttons -->
+        <!-- Actions / New Transaction Buttons -->
         <div class="flex items-center space-x-3">
-
-          <!-- Currency Selector -->
-          <div class="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-            <i data-lucide="coins" class="w-4 h-4 text-slate-500"></i>
-            <select id="currency-select" onchange="changeCurrency(this.value)" class="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none cursor-pointer">
-              <option value="SAR">SAR (ر.س)</option>
-              <option value="USD">USD ($)</option>
-              <option value="EUR">EUR (€)</option>
-              <option value="GBP">GBP (£)</option>
-              <option value="AED">AED (د.إ)</option>
-            </select>
-          </div>
 
           <!-- Notification Drawer Button -->
           <div class="relative">
             <button onclick="toggleNotificationDrawer()" class="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition relative">
               <i data-lucide="bell" class="w-5 h-5"></i>
-              <span id="notif-badge" class="hidden absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white dark:border-slate-900"></span>
+              <span id="notif-badge" class="hidden absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-lavender-500 rounded-full border-2 border-white dark:border-slate-900"></span>
             </button>
 
             <!-- Notification Drawer Dropdown -->
@@ -209,12 +704,12 @@
           </div>
 
           <!-- AI Engine Status Badge -->
-          <div id="ai-status-badge" class="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-indigo-50 to-violet-50 dark:from-indigo-950/60 dark:to-violet-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80 text-xs font-semibold shadow-xs">
+          <div id="ai-status-badge" class="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-lavender-50 dark:bg-lavender-600/20 text-lavender-600 dark:text-lavender-300 border border-lavender-200/80 dark:border-lavender-600/50 text-xs font-semibold shadow-xs">
             <span class="relative flex h-2 w-2">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-lime-500"></span>
             </span>
-            <span id="ai-status-text">Gemini & Nemotron AI Active ⚡</span>
+            <span id="ai-status-text">Smart analysis ready</span>
           </div>
 
           <!-- Theme Toggle -->
@@ -222,24 +717,12 @@
             <i id="theme-icon" data-lucide="moon" class="w-5 h-5"></i>
           </button>
 
-          <!-- MULTI-MODAL LOG TRANSACTION BUTTONS -->
-          <div class="flex items-center space-x-1.5">
-            <!-- Voice Input Button -->
-            <button onclick="openVoiceModal()" class="flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition text-xs font-semibold" title="Record expense with voice">
-              <i data-lucide="mic" class="w-4 h-4"></i>
-              <span class="hidden sm:inline">Voice</span>
-            </button>
-
-            <!-- Receipt OCR Button -->
-            <button onclick="openOcrModal()" class="flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition text-xs font-semibold" title="Upload receipt for OCR extraction">
-              <i data-lucide="camera" class="w-4 h-4"></i>
-              <span class="hidden sm:inline">Scan Receipt</span>
-            </button>
-
-            <!-- Add Transaction Manual Button -->
-            <button onclick="openTransactionModal()" class="flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-md shadow-brand-500/20 transition text-xs font-semibold">
+          <!-- STREAMLINED ADD TRANSACTION BUTTON -->
+          <div class="relative">
+            <button onclick="openAddTransactionChoiceModal()" class="flex items-center space-x-1.5 px-4 py-2 rounded-lg accent-gloss hover:brightness-105 transition text-xs font-bold">
               <i data-lucide="plus" class="w-4 h-4"></i>
               <span>Add Transaction</span>
+              <i data-lucide="chevron-down" class="w-3.5 h-3.5 ml-0.5"></i>
             </button>
           </div>
 
@@ -252,46 +735,107 @@
         <!-- ==================== SECTION 1: DASHBOARD ==================== -->
         <div id="view-dashboard" class="page-view space-y-6">
 
+          <!-- Premium Financial Overview Hero -->
+          <div class="premium-hero rounded-3xl p-5 sm:p-7 text-white">
+
+            <!-- Floating bubble / shape animation -->
+            <div class="hero-bubbles pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
+              <span class="bubble" style="width:70px;height:70px;left:6%;top:62%;animation-delay:0s;"></span>
+              <span class="bubble" style="width:42px;height:42px;left:22%;top:18%;animation-delay:1.2s;background:radial-gradient(circle at 30% 30%, rgba(129,140,248,0.45), rgba(129,140,248,0.08));"></span>
+              <span class="bubble" style="width:96px;height:96px;right:10%;top:12%;animation-delay:2.1s;opacity:0.22;"></span>
+              <span class="bubble" style="width:30px;height:30px;right:28%;bottom:16%;animation-delay:0.6s;background:radial-gradient(circle at 30% 30%, rgba(96,165,250,0.45), rgba(96,165,250,0.08));"></span>
+              <span class="bubble" style="width:54px;height:54px;left:48%;top:70%;animation-delay:1.7s;opacity:0.28;"></span>
+            </div>
+
+            <div class="relative z-10 flex flex-col sm:flex-row sm:items-end justify-between gap-5">
+              <div class="max-w-xl">
+                <div class="flex items-center gap-2 mb-3">
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[10px] font-bold uppercase tracking-[0.16em] text-lime-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-lime-300"></span>
+                    Live overview
+                  </span>
+                  <span id="hero-current-date" class="text-xs text-slate-300"></span>
+                </div>
+                <p class="text-sm text-slate-300 mb-1">Welcome back, <span id="hero-user-name" class="text-white font-semibold">Sarah</span></p>
+                <h3 class="text-2xl sm:text-[32px] leading-tight font-extrabold tracking-tight">Your financial position</h3>
+              </div>
+              <div class="sm:text-right">
+                <p class="text-[11px] uppercase tracking-[0.16em] font-bold text-lime-200">Available balance</p>
+                <p id="hero-net-balance" class="mt-1 text-3xl sm:text-[38px] leading-none font-extrabold tracking-tight">0.00 SAR</p>
+                <p id="hero-cash-flow" class="mt-2 text-xs text-lime-300 font-semibold">Cash flow is updating</p>
+              </div>
+            </div>
+            <div class="absolute right-5 sm:right-8 bottom-0 w-36 h-20 opacity-70 pointer-events-none" aria-hidden="true">
+              <svg viewBox="0 0 144 80" fill="none" class="w-full h-full">
+                <defs>
+                  <linearGradient id="heroLine" x1="0" y1="0" x2="144" y2="0">
+                    <stop stop-color="#C6F26B"/>
+                    <stop offset="0.5" stop-color="#5EEAD4"/>
+                    <stop offset="1" stop-color="#A78BFA"/>
+                  </linearGradient>
+                </defs>
+                <path d="M3 64 C18 58,24 68,39 52 C54 36,61 58,74 43 C87 28,99 39,112 24 C124 12,132 20,141 8" stroke="url(#heroLine)" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="141" cy="8" r="4" fill="#A78BFA"/>
+              </svg>
+            </div>
+          </div>
+
           <!-- Core Stat Metric Cards -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             
             <!-- Card 1: Total Income -->
-            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div class="premium-stat bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between cursor-pointer" onclick="navigateTo('transactions')">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Income</span>
-                <div class="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <div class="w-8 h-8 rounded-lg bg-lime-100 text-lime-700 flex items-center justify-center">
                   <i data-lucide="arrow-down-left" class="w-4 h-4"></i>
                 </div>
               </div>
               <div class="mt-3">
                 <h3 id="stat-total-income" class="text-2xl font-bold text-slate-900 dark:text-white">0.00</h3>
-                <p class="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center font-medium">
+                <p class="text-xs text-lime-700 dark:text-lime-300 mt-1 flex items-center font-medium">
                   <i data-lucide="trending-up" class="w-3.5 h-3.5 mr-1"></i> Current Month Inflow
                 </p>
+              </div>
+              <div class="stat-card-expand">
+                <div class="stat-card-expand-inner space-y-1.5">
+                  <p id="stat-income-breakdown" class="text-[11px] text-slate-500 dark:text-slate-400">View income sources</p>
+                  <button onclick="event.stopPropagation(); navigateTo('transactions')" class="text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 flex items-center">
+                    View transactions <i data-lucide="chevron-right" class="w-3 h-3 ml-1"></i>
+                  </button>
+                </div>
               </div>
             </div>
 
             <!-- Card 2: Total Expenses -->
-            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div class="premium-stat bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between cursor-pointer" onclick="navigateTo('transactions')">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Expenses</span>
-                <div class="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                <div class="w-8 h-8 rounded-lg bg-coral-100 text-coral-600 flex items-center justify-center">
                   <i data-lucide="arrow-up-right" class="w-4 h-4"></i>
                 </div>
               </div>
               <div class="mt-3">
                 <h3 id="stat-total-expenses" class="text-2xl font-bold text-slate-900 dark:text-white">0.00</h3>
-                <p class="text-xs text-rose-500 dark:text-rose-400 mt-1 flex items-center font-medium">
+                <p class="text-xs text-lavender-600 dark:text-lavender-300 mt-1 flex items-center font-medium">
                   <i data-lucide="credit-card" class="w-3.5 h-3.5 mr-1"></i> Logged Disbursements
                 </p>
+              </div>
+              <div class="stat-card-expand">
+                <div class="stat-card-expand-inner space-y-1.5">
+                  <p id="stat-expense-breakdown" class="text-[11px] text-slate-500 dark:text-slate-400">View category breakdown</p>
+                  <button onclick="event.stopPropagation(); navigateTo('transactions')" class="text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 flex items-center">
+                    View transactions <i data-lucide="chevron-right" class="w-3 h-3 ml-1"></i>
+                  </button>
+                </div>
               </div>
             </div>
 
             <!-- Card 3: Net Cash Balance -->
-            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div class="premium-stat bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between cursor-pointer" onclick="navigateTo('reports')">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Net Balance</span>
-                <div class="w-8 h-8 rounded-lg bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-brand-400 flex items-center justify-center">
+                <div class="w-8 h-8 rounded-lg bg-lavender-100 text-lavender-600 flex items-center justify-center">
                   <i data-lucide="scale" class="w-4 h-4"></i>
                 </div>
               </div>
@@ -299,13 +843,21 @@
                 <h3 id="stat-net-balance" class="text-2xl font-bold text-slate-900 dark:text-white">0.00</h3>
                 <p id="stat-net-subtext" class="text-xs text-slate-500 mt-1 font-medium">Cash Reserve</p>
               </div>
+              <div class="stat-card-expand">
+                <div class="stat-card-expand-inner space-y-1.5">
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400">Income minus total expenses</p>
+                  <button onclick="event.stopPropagation(); navigateTo('reports')" class="text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 flex items-center">
+                    View report <i data-lucide="chevron-right" class="w-3 h-3 ml-1"></i>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <!-- Card 4: Monthly Budget Ceiling Status -->
-            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div class="premium-stat bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between cursor-pointer" onclick="navigateTo('budgets')">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Budget Status</span>
-                <span id="stat-budget-badge" class="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Healthy</span>
+                <span id="stat-budget-badge" class="text-xs font-bold px-2 py-0.5 rounded-full bg-cobalt-100 text-cobalt-700">Healthy</span>
               </div>
               <div class="mt-2">
                 <div class="flex items-baseline justify-between">
@@ -314,9 +866,17 @@
                 </div>
                 <!-- Progress bar -->
                 <div class="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full mt-2 overflow-hidden">
-                  <div id="stat-budget-bar" class="bg-brand-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                  <div id="stat-budget-bar" class="progress-gradient h-full rounded-full transition-all duration-500" style="width: 0%"></div>
                 </div>
                 <p id="stat-budget-remaining" class="text-[11px] text-slate-500 mt-1.5">0.00 remaining</p>
+              </div>
+              <div class="stat-card-expand">
+                <div class="stat-card-expand-inner space-y-1.5">
+                  <p id="stat-budget-breakdown" class="text-[11px] text-slate-500 dark:text-slate-400">Manage category limits</p>
+                  <button onclick="event.stopPropagation(); navigateTo('budgets')" class="text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 flex items-center">
+                    Inspect budgets <i data-lucide="chevron-right" class="w-3 h-3 ml-1"></i>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -339,17 +899,17 @@
           </div>
 
           <!-- ==================== AI FINANCIAL ADVISOR & SPENDING AUDIT CARD ==================== -->
-          <div class="bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/50 dark:from-slate-900 dark:via-slate-900/90 dark:to-indigo-950/30 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 shadow-sm p-5 space-y-4">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-indigo-100/60 dark:border-slate-800">
+          <div class="premium-card bg-gradient-to-br from-lavender-50/70 via-white to-lime-50/50 dark:from-slate-900 dark:via-slate-900/90 dark:to-lavender-600/10 rounded-2xl border border-lavender-100 dark:border-lavender-600/30 shadow-sm p-5 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-lavender-100/60 dark:border-slate-800">
               <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-lavender-500 to-lavender-400 text-[#1E1F22] flex items-center justify-center shadow-md shadow-lavender-400/30">
                   <i data-lucide="sparkles" class="w-5 h-5"></i>
                 </div>
                 <div>
                   <div class="flex items-center space-x-2">
                     <h3 class="font-bold text-slate-900 dark:text-white text-base">AI Financial Advisor & Spending Audit</h3>
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                      Nemotron ⚡ Gemini
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
+                      Smart insights
                     </span>
                   </div>
                   <p class="text-xs text-slate-500 dark:text-slate-400">Real-time intelligent analysis of your income, expenses, and budget limits</p>
@@ -357,7 +917,7 @@
               </div>
               <button id="btn-run-ai-audit" onclick="generateAiAdvisorAudit()" class="flex items-center justify-center space-x-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-semibold text-xs shadow-md shadow-indigo-500/20 transition active:scale-95">
                 <i data-lucide="sparkles" class="w-4 h-4"></i>
-                <span id="btn-run-ai-audit-text">Run Real-Time AI Audit</span>
+                <span id="btn-run-ai-audit-text">Analyze finances</span>
               </button>
             </div>
 
@@ -386,7 +946,7 @@
                     <i data-lucide="brain-circuit" class="w-3.5 h-3.5 mr-1.5"></i> Executive AI Summary
                   </span>
                   <p id="ai-executive-summary" class="text-slate-700 dark:text-slate-300 leading-relaxed">
-                    Click <strong>"Run Real-Time AI Audit"</strong> to generate a custom financial audit powered by your current transactions, savings goals, and budget limits.
+                    Choose <strong>"Analyze finances"</strong> to create a personalized overview using your transactions, savings goals, and budget limits.
                   </p>
                 </div>
 
@@ -429,7 +989,7 @@
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
             <!-- Category Spending Donut Chart -->
-            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+            <div class="premium-card bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col">
               <div class="flex items-center justify-between mb-4">
                 <div>
                   <h3 class="font-bold text-slate-900 dark:text-white text-sm">Expenses by Category</h3>
@@ -443,7 +1003,7 @@
             </div>
 
             <!-- Inflow vs Outflow Trend Bar Chart -->
-            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm lg:col-span-2 flex flex-col">
+            <div class="premium-card bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm lg:col-span-2 flex flex-col">
               <div class="flex items-center justify-between mb-4">
                 <div>
                   <h3 class="font-bold text-slate-900 dark:text-white text-sm">Cash Flow Comparison</h3>
@@ -462,7 +1022,7 @@
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
             <!-- Recent Transactions Table (2 Cols) -->
-            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm lg:col-span-2">
+            <div class="premium-card bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm lg:col-span-2">
               <div class="flex items-center justify-between mb-4">
                 <div>
                   <h3 class="font-bold text-slate-900 dark:text-white text-sm">Recent Transactions</h3>
@@ -518,6 +1078,43 @@
 
             </div>
 
+          </div>
+
+        </div>
+
+        <!-- ==================== SECTION 1.5: DATA INPUT & CAPTURE ==================== -->
+        <div id="view-data-input" class="page-view hidden space-y-6">
+
+          <div class="premium-card rounded-2xl p-6 space-y-5">
+            <div>
+              <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <i data-lucide="scan-line" class="w-5 h-5 text-brand-600"></i>
+                <span>Data Input & Capture</span>
+              </h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Drop an image, paste from clipboard (Ctrl+V), scan a receipt, or dictate with your voice.</p>
+            </div>
+
+            <!-- Drag & Drop / Paste Zone -->
+            <div id="data-input-dropzone" class="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-brand-500 dark:hover:border-brand-400 rounded-2xl p-10 text-center bg-slate-50/60 dark:bg-slate-800/40 transition cursor-pointer group">
+              <div class="flex flex-col items-center justify-center space-y-3">
+                <div class="w-14 h-14 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-600 dark:text-brand-400 flex items-center justify-center group-hover:scale-110 transition shadow-inner">
+                  <i data-lucide="upload-cloud" class="w-7 h-7"></i>
+                </div>
+                <h4 class="text-sm font-bold text-slate-800 dark:text-slate-200">Drag & drop a receipt image, paste (Ctrl+V), or click to browse</h4>
+                <p class="text-xs text-slate-500 dark:text-slate-400">JPEG, PNG, WebP — processed with Gemini OCR & Tesseract fallback</p>
+                <div class="flex flex-wrap items-center justify-center gap-2 pt-1">
+                  <button onclick="event.stopPropagation(); openOcrModal()" class="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl accent-gloss hover:brightness-105 font-bold text-xs transition active:scale-95">
+                    <i data-lucide="camera" class="w-4 h-4"></i><span>Scan Receipt</span>
+                  </button>
+                  <button onclick="event.stopPropagation(); openVoiceModal()" class="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-lavender-400 hover:bg-lavender-300 text-[#1E1F22] font-bold text-xs shadow-md shadow-lavender-400/30 transition active:scale-95">
+                    <i data-lucide="mic" class="w-4 h-4"></i><span>Voice</span>
+                  </button>
+                  <button onclick="event.stopPropagation(); openTransactionModal()" class="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-[#1E1F22] hover:bg-[#2C2D31] text-white font-bold text-xs transition active:scale-95">
+                    <i data-lucide="plus" class="w-4 h-4"></i><span>Manual</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -595,7 +1192,7 @@
                 Adjust Global Budget
               </button>
               <button onclick="openAddCategoryBudgetModal()" class="px-4 py-2 rounded-lg bg-brand-600 text-white text-xs font-semibold hover:bg-brand-700 shadow-sm">
-                + New Category Budget
+                + New Category
               </button>
             </div>
           </div>
@@ -701,6 +1298,14 @@
 
             <!-- Customization Toggles & Export -->
             <div class="flex items-center space-x-2">
+                <label class="flex items-center space-x-1.5 text-[11px] text-slate-500">
+                  <input type="checkbox" id="report-show-summary" checked onchange="generateReport()" class="rounded border-slate-300">
+                  <span>Summary</span>
+                </label>
+                <label class="flex items-center space-x-1.5 text-[11px] text-slate-500">
+                  <input type="checkbox" id="report-show-categories" checked onchange="generateReport()" class="rounded border-slate-300">
+                  <span>Categories</span>
+                </label>
               <button onclick="exportReportCSV()" class="px-3.5 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition">
                 <i data-lucide="download" class="w-3.5 h-3.5"></i>
                 <span>Export CSV</span>
@@ -716,40 +1321,40 @@
           <div id="print-report-area" class="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
 
             <!-- Report Header -->
-            <div class="flex items-center justify-between border-b pb-4 border-slate-200 dark:border-slate-700">
+            <div class="report-doc-header flex items-center justify-between border-b pb-4 border-slate-200 dark:border-slate-700">
               <div>
-                <span class="text-xs font-bold text-brand-600 uppercase tracking-wider">Super Budgeting System</span>
-                <h2 class="text-xl font-bold text-slate-900 dark:text-white mt-0.5">Executive Financial Statement</h2>
-                <p id="report-date-range-label" class="text-xs text-slate-500">Period: 1 September 2026 – 17 September 2026</p>
+                <span class="report-brand-mark text-xs font-bold text-lime-700 dark:text-lime-300 uppercase tracking-wider">Super Budgeting System</span>
+                <h2 class="report-doc-title text-xl font-bold text-slate-900 dark:text-white mt-0.5">Executive Financial Statement</h2>
+                <p id="report-date-range-label" class="report-meta text-xs text-slate-500">Period: 1 September 2026 – 17 September 2026</p>
               </div>
               <div class="text-right">
-                <p class="text-xs font-semibold text-slate-700 dark:text-slate-300">Generated for: <span id="report-user-name">Sarah Al-Mansoor</span></p>
-                <p class="text-[11px] text-slate-400">Date Generated: <span id="report-timestamp">17 Sep 2026</span></p>
+                <p class="report-meta text-xs font-semibold text-slate-700 dark:text-slate-300">Generated for: <span id="report-user-name">Sarah Al-Mansoor</span></p>
+                <p class="report-meta text-[11px] text-slate-400">Date Generated: <span id="report-timestamp">17 Sep 2026</span></p>
               </div>
             </div>
 
             <!-- Summary Table Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                <span class="text-[11px] font-semibold text-slate-500 uppercase">Gross Inflows</span>
-                <h4 id="report-gross-income" class="text-lg font-bold text-emerald-600 mt-1">0.00</h4>
+            <div id="report-summary-section" class="report-summary-grid grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div class="report-summary-card p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                <span class="report-summary-label text-[11px] font-semibold text-slate-600 dark:text-slate-300 uppercase">Gross Inflows</span>
+                <h4 id="report-gross-income" class="report-summary-value text-lg font-bold text-lime-700 dark:text-lime-300 mt-1">0.00</h4>
               </div>
-              <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                <span class="text-[11px] font-semibold text-slate-500 uppercase">Gross Outflows</span>
-                <h4 id="report-gross-expenses" class="text-lg font-bold text-rose-600 mt-1">0.00</h4>
+              <div class="report-summary-card p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                <span class="report-summary-label text-[11px] font-semibold text-slate-600 dark:text-slate-300 uppercase">Gross Outflows</span>
+                <h4 id="report-gross-expenses" class="report-summary-value text-lg font-bold text-coral-600 dark:text-coral-300 mt-1">0.00</h4>
               </div>
-              <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                <span class="text-[11px] font-semibold text-slate-500 uppercase">Net Surplus / Savings</span>
-                <h4 id="report-net-surplus" class="text-lg font-bold text-brand-600 mt-1">0.00</h4>
+              <div class="report-summary-card p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                <span class="report-summary-label text-[11px] font-semibold text-slate-600 dark:text-slate-300 uppercase">Net Surplus / Savings</span>
+                <h4 id="report-net-surplus" class="report-summary-value text-lg font-bold text-lavender-600 dark:text-lavender-300 mt-1">0.00</h4>
               </div>
-              <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                <span class="text-[11px] font-semibold text-slate-500 uppercase">Savings Rate</span>
-                <h4 id="report-savings-rate" class="text-lg font-bold text-indigo-600 mt-1">0.0%</h4>
+              <div class="report-summary-card p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                <span class="report-summary-label text-[11px] font-semibold text-slate-600 dark:text-slate-300 uppercase">Savings Rate</span>
+                <h4 id="report-savings-rate" class="report-summary-value text-lg font-bold text-cobalt-600 dark:text-cobalt-300 mt-1">0.0%</h4>
               </div>
             </div>
 
             <!-- Category Itemization in Report -->
-            <div>
+            <div id="report-category-section">
               <h4 class="font-bold text-sm text-slate-900 dark:text-white mb-3">Itemized Category Breakdown</h4>
               <table class="w-full text-left text-xs border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
                 <thead class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
@@ -764,7 +1369,22 @@
                 <tbody id="report-category-tbody" class="divide-y divide-slate-100 dark:divide-slate-800">
                   <!-- Populated via JS -->
                 </tbody>
+                <tfoot id="report-category-tfoot" class="font-bold bg-slate-100 dark:bg-slate-800">
+                  <tr>
+                    <td class="p-2.5">TOTAL</td>
+                    <td class="p-2.5" id="report-total-budget">0.00</td>
+                    <td class="p-2.5" id="report-total-spent">0.00</td>
+                    <td class="p-2.5" id="report-total-variance">0.00</td>
+                    <td class="p-2.5 text-right" id="report-total-pct">100%</td>
+                  </tr>
+                </tfoot>
               </table>
+            </div>
+
+            <!-- Professional Report Footer -->
+            <div class="report-footer flex justify-between text-xs text-slate-400 border-t border-slate-200 dark:border-slate-700 pt-3 mt-4">
+              <span>Super Budgeting System (SBS) — Confidential Financial Report</span>
+              <span id="report-footer-signature">Authorized by: ____________________</span>
             </div>
 
           </div>
@@ -783,7 +1403,7 @@
               <div>
                 <div class="flex items-center space-x-2">
                   <h3 class="font-bold text-slate-900 dark:text-white text-base">SuperBudget AI Financial Advisor</h3>
-                  <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Rule FR-39 to FR-44</span>
+                  <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-violet-100 text-violet-800">Smart overview</span>
                 </div>
                 <p class="text-xs text-slate-600 dark:text-slate-400 mt-1 max-w-xl">
                   Analyzes your spending patterns, identifies recurring spikes, and recommends proactive budget adjustments. Per the project charter, the AI acts as an advisor and will never alter your budgets autonomously.
@@ -889,7 +1509,7 @@
           </div>
           <div>
             <h3 class="font-bold text-slate-900 dark:text-white text-sm">Receipt OCR Scanner</h3>
-            <p class="text-[11px] text-slate-500">Rule FR-19 to FR-23: Automated data extraction</p>
+            <p class="text-[11px] text-slate-500">Capture, review, and save in seconds</p>
           </div>
         </div>
         <button onclick="closeModal('modal-ocr')" class="text-slate-400 hover:text-slate-600">
@@ -935,10 +1555,10 @@
           </div>
         </div>
 
-        <!-- Sample Quick Receipts Buttons for Easy Demo -->
+        <!-- Example Quick Receipts -->
         <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
           <div class="flex items-center justify-between mb-2">
-            <p class="text-[11px] font-semibold text-slate-500">Quick Test Sample Receipts:</p>
+            <p class="text-[11px] font-semibold text-slate-500">Example receipt layouts</p>
             <span class="text-[10px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950 px-2 py-0.5 rounded">USD ➔ SAR Auto-Convert</span>
           </div>
           <div class="flex flex-wrap gap-2">
@@ -964,19 +1584,19 @@
           </div>
           <div>
             <div class="flex items-center space-x-2">
-              <p class="font-bold text-indigo-900 dark:text-indigo-200 text-xs">Gemini Multimodal AI Analyzing Receipt...</p>
+              <p class="font-bold text-indigo-900 dark:text-indigo-200 text-xs">Analyzing receipt...</p>
               <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white">Vision AI</span>
             </div>
             <p id="ocr-progress-subtext" class="text-indigo-600 dark:text-indigo-400 text-[11px] mt-0.5">Reading currency, merchant, amounts, items, and tax breakdown...</p>
           </div>
         </div>
 
-        <!-- Review & Verification Form (Per Rule FR-22 & FR-23) -->
+        <!-- Review and verification -->
         <div id="ocr-review-container" class="hidden space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
           <div class="p-2.5 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 flex items-center justify-between text-[11px] text-indigo-900 dark:text-indigo-300">
             <div class="flex items-center space-x-2">
               <i data-lucide="sparkles" class="w-4 h-4 text-indigo-500"></i>
-              <span><strong>Gemini Vision Extraction:</strong> <span id="ocr-ai-confidence">98% confidence</span></span>
+              <span><strong>Smart extraction:</strong> <span id="ocr-ai-confidence">98% confidence</span></span>
             </div>
             <span class="text-[10px] font-mono bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">Verified</span>
           </div>
@@ -1175,7 +1795,7 @@
           </div>
           <div>
             <h3 class="font-bold text-slate-900 dark:text-white text-sm">Voice Transaction Input</h3>
-            <p class="text-[11px] text-slate-500">Rule FR-24 to FR-28: Speech recognition & NLP parsing</p>
+            <p class="text-[11px] text-slate-500">Speak or upload a transaction recording</p>
           </div>
         </div>
         <button onclick="closeModal('modal-voice')" class="text-slate-400 hover:text-slate-600">
@@ -1192,11 +1812,20 @@
           </button>
           <p id="voice-status-label" class="mt-3 font-semibold text-slate-700 dark:text-slate-300">Click microphone to speak</p>
           <p class="text-slate-400 text-[11px]">Example: "I spent 80 SAR on dinner yesterday"</p>
+          <div class="mt-3 flex items-center justify-center gap-2">
+            <button type="button" id="btn-audio-record" onclick="toggleAudioRecording()" class="px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold">
+              Record & Analyze
+            </button>
+            <button type="button" onclick="document.getElementById('voice-audio-file-input').click()" class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+              Upload Audio
+            </button>
+          </div>
+          <input type="file" id="voice-audio-file-input" accept="audio/mp3,audio/mpeg,audio/wav,audio/mp4,audio/webm,audio/ogg" class="hidden" onchange="handleVoiceAudioFile(event)">
         </div>
 
-        <!-- Quick Voice Test Chips for Demo -->
+        <!-- Example voice phrases -->
         <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 text-left">
-          <p class="text-[11px] font-semibold text-slate-500 mb-2">Or test sample voice phrases:</p>
+          <p class="text-[11px] font-semibold text-slate-500 mb-2">Try an example phrase:</p>
           <div class="space-y-1.5">
             <button onclick="testVoicePhrase('I spent 75 SAR on groceries today')" class="w-full text-left px-2.5 py-1.5 bg-white dark:bg-slate-800 border rounded text-[11px] font-medium hover:border-emerald-500 flex items-center justify-between">
               <span>"I spent 75 SAR on groceries today"</span>
@@ -1317,6 +1946,7 @@
           <div>
             <label class="font-semibold block mb-1">Frequency</label>
             <select id="rec-freq" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+              <option value="daily">Daily</option>
               <option value="monthly">Monthly</option>
               <option value="weekly">Weekly</option>
               <option value="yearly">Yearly</option>
@@ -1347,19 +1977,31 @@
           <input type="text" id="pref-user-name" value="Sarah Al-Mansoor" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
         </div>
         <div>
+          <label class="font-semibold block mb-1">Default Currency</label>
+          <select id="pref-currency" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+            <option value="SAR">SAR — Saudi Riyal (ر.س)</option>
+            <option value="USD">USD — US Dollar ($)</option>
+            <option value="EUR">EUR — Euro (€)</option>
+            <option value="GBP">GBP — British Pound (£)</option>
+            <option value="AED">AED — UAE Dirham</option>
+          </select>
+        </div>
+        <div>
           <label class="font-semibold block mb-1">Warning Threshold Percentage (%)</label>
           <input type="number" id="pref-warning-threshold" min="50" max="95" value="80" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
           <p class="text-[11px] text-slate-400 mt-1">Triggers amber budget alerts when spending exceeds this percentage.</p>
         </div>
         <div>
-          <label class="font-semibold block mb-1">Google Gemini API Key (Optional for Standalone/Mobile Web)</label>
-          <input type="password" id="pref-gemini-key" placeholder="AIzaSy... (For direct mobile AI)" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-          <p class="text-[11px] text-slate-400 mt-1">Allows real-time Multimodal Vision on any device even without running the local Node server.</p>
+          <label class="font-semibold block mb-1">Optional Mobile AI Key</label>
+          <input type="password" id="pref-gemini-key" placeholder="For direct mobile smart capture" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+          <p class="text-[11px] text-slate-400 mt-1">For standalone mobile use. Local server configuration is recommended for privacy.</p>
         </div>
         <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <button onclick="resetToSampleData()" class="text-xs text-rose-600 hover:underline">
-            Reset to Initial Sample Data
-          </button>
+          <div class="flex items-center space-x-3">
+            <button onclick="exportLocalData()" class="text-xs text-brand-600 hover:underline">Export My Data</button>
+            <button onclick="deleteAllFinancialData()" class="text-xs text-rose-600 hover:underline">Delete My Data</button>
+            <button onclick="resetToSampleData()" class="text-xs text-slate-500 hover:underline">Reset Demo</button>
+          </div>
           <button onclick="savePreferences()" class="px-4 py-2 bg-brand-600 text-white rounded-lg font-bold">
             Save Preferences
           </button>
@@ -1369,6 +2011,24 @@
   </div>
 
   <!-- ==================== MOBILE-FIRST CAMERA & NAVIGATION EXTENSIONS ==================== -->
+
+  <!-- BUDGET EDIT MODAL -->
+  <div id="modal-budget-edit" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-4">
+      <div class="flex items-center justify-between border-b pb-3 border-slate-100 dark:border-slate-800">
+        <h3 id="budget-edit-title" class="font-bold text-slate-900 dark:text-white text-sm">Edit Budget</h3>
+        <button onclick="closeModal('modal-budget-edit')" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div>
+        <label class="font-semibold block mb-1 text-xs">Amount (<span id="budget-edit-currency">SAR</span>)</label>
+        <input type="number" id="budget-edit-input" min="0" step="0.01" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white">
+      </div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button onclick="closeModal('modal-budget-edit')" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+        <button onclick="saveBudgetEdit()" class="px-4 py-2 rounded-lg accent-gloss text-xs font-bold">Save</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 7. FULL-SCREEN LIVE CAMERA SCANNER VIEWFINDER MODAL -->
   <div id="modal-live-camera" class="hidden fixed inset-0 z-[100] bg-black text-white flex flex-col justify-between overflow-hidden">
@@ -1436,10 +2096,10 @@
         <div class="w-full h-full bg-white rounded-full shadow-lg"></div>
       </button>
 
-      <!-- Quick Sample Receipt Demo button -->
+      <!-- Example receipt layout -->
       <button type="button" onclick="testSampleReceipt('panda'); closeLiveCamera();" class="text-white/80 hover:text-white flex flex-col items-center space-y-1 text-xs">
         <i data-lucide="sparkles" class="w-6 h-6 text-amber-400"></i>
-        <span class="text-[10px]">Demo Slip</span>
+        <span class="text-[10px]">Example Slip</span>
       </button>
     </div>
   </div>
@@ -1591,7 +2251,7 @@
           <div class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center">
             <i data-lucide="settings" class="w-4 h-4"></i>
           </div>
-          <span class="flex-1 text-left">Preferences & Demo Reset</span>
+          <span class="flex-1 text-left">Preferences & Reset</span>
           <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
         </button>
       </div>
