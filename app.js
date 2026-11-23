@@ -288,8 +288,30 @@ let voiceParsedDate = "";
 let voiceParsedType = "expense";
 
 // Initialize Application
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  // Gate: verify session with the server (skip gracefully when opened as a static file)
+  let authUser = null;
+  try {
+    const res = await fetch('/api/auth/me');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.user) authUser = data.user;
+    } else if (res.status === 401) {
+      location.href = '/login.html';
+      return;
+    }
+  } catch (e) {
+    // Offline / static hosting — continue in local demo mode
+  }
+
+  if (authUser) SBS_USER = authUser.username;
+
   loadState();
+  if (authUser) {
+    appState.user.name = authUser.name || appState.user.name;
+    appState.user.email = authUser.email || appState.user.email;
+    saveState();
+  }
   initTheme();
   initCategoriesDropdowns();
   initSidebar();
@@ -300,6 +322,12 @@ document.addEventListener("DOMContentLoaded", () => {
   checkAiStatus();
   lucide.createIcons();
 });
+
+// ===== logout (L?) =====
+async function logout() {
+  try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
+  location.href = '/login.html';
+}
 
 // --- SIDEBAR HOVER + PIN ---
 // ===== initHeroBubbles (L?) =====
@@ -387,8 +415,11 @@ function toggleSidebarPin() {
 
 // --- STATE MANAGEMENT & LOCAL STORAGE ---
 // ===== loadState (L357-L391) =====
+let SBS_USER = null;
+function stateKey() { return "super_budget_state" + (SBS_USER ? "::" + SBS_USER : ""); }
+
 function loadState() {
-  const stored = localStorage.getItem("super_budget_state");
+  const stored = localStorage.getItem(stateKey());
   if (stored) {
     try {
       appState = JSON.parse(stored);
@@ -427,7 +458,7 @@ function loadState() {
 
 // ===== saveState (L395-L397) =====
 function saveState() {
-  localStorage.setItem("super_budget_state", JSON.stringify(appState));
+  localStorage.setItem(stateKey(), JSON.stringify(appState));
 }
 // ===== end saveState (L397) =====
 

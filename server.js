@@ -9,6 +9,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // Load environment variables from .env if present
 // ===== loadEnv (L15-L30) =====
@@ -183,6 +184,149 @@ function sendJson(res, statusCode, data) {
   res.end(JSON.stringify(data));
 }
 // ===== end sendJson (L184) =====
+
+// ============================================================================
+// AUTHENTICATION (zero-dependency): users, scrypt passwords, TOTP 2FA, sessions
+// ============================================================================
+const DATA_DIR = path.join(__dirname, 'data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const SESSION_COOKIE = 'sbs_session';
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+function readUsers() {
+  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); } catch (e) { return []; }
+}
+function writeUsers(users) {
+  ensureDataDir();
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+function readSessions() {
+  try { return JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8')); } catch (e) { return {}; }
+}
+function writeSessions(s) {
+  ensureDataDir();
+  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(s, null, 2));
+}
+
+// Password hashing with scrypt (salt:hash)
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+function verifyPassword(password, stored) {
+  try {
+    const [salt, hash] = String(stored).split(':');
+    if (!salt || !hash) return false;
+    const test = crypto.scryptSync(String(password), salt, 64);
+    const expected = Buffer.from(hash, 'hex');
+    return test.length === expected.length && crypto.timingSafeEqual(test, expected);
+  } catch (e) { return false; }
+}
+
+// TOTP (RFC 6238) + base32
+const B32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32Decode(str) {
+  const clean = String(str).toUpperCase().replace(/=+$/, '').replace(/\s/g, '');
+  let bits = 0, value = 0;
+  const out = [];
+  for (const ch of clean) {
+    const idx = B32_ALPHABET.indexOf(ch);
+    if (idx === -1) continue;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) { out.push((value >>> (bits - 8)) & 0xff); bits -= 8; }
+  }
+  return Buffer.from(out);
+}
+function base32Encode(buf) {
+  let bits = 0, value = 0, out = '';
+  for (const byte of buf) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) { out += B32_ALPHABET[(value >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits > 0) out += B32_ALPHABET[(value << (5 - bits)) & 31];
+  return out;
+}
+function generateTotpSecret() { return base32Encode(crypto.randomBytes(20)); }
+function totpCode(secret, counter) {
+  const buf = Buffer.alloc(8);
+  buf.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
+  buf.writeUInt32BE(counter >>> 0, 4);
+  const hmac = crypto.createHmac('sha1', base32Decode(secret)).update(buf).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const code = ((hmac[offset] & 0x7f) << 24) | ((hmac[offset + 1] & 0xff) << 16) | ((hmac[offset + 2] & 0xff) << 8) | (hmac[offset + 3] & 0xff);
+  return String(code % 1000000).padStart(6, '0');
+}
+function verifyTotp(secret, token, window = 1) {
+  if (!secret || !token) return false;
+  const clean = String(token).replace(/\s/g, '');
+  if (!/^\d{6}$/.test(clean)) return false;
+  const counter = Math.floor(Date.now() / 1000 / 30);
+  for (let w = -window; w <= window; w++) {
+    if (totpCode(secret, counter + w) === clean) return true;
+  }
+  return false;
+}
+function otpauthUri(secret, account) {
+  const label = encodeURIComponent(`SBS:${account}`);
+  return `otpauth://totp/${label}?secret=${secret}&issuer=SuperBudgetingSystem&algorithm=SHA1&digits=6&period=30`;
+}
+
+// Sessions
+function createSession(userId) {
+  const sid = crypto.randomBytes(24).toString('hex');
+  const sessions = readSessions();
+  sessions[sid] = { userId, createdAt: Date.now() };
+  writeSessions(sessions);
+  return sid;
+}
+function getSessionUser(req) {
+  const cookie = req.headers.cookie || '';
+  const m = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([a-f0-9]+)`));
+  if (!m) return null;
+  const sessions = readSessions();
+  const sess = sessions[m[1]];
+  if (!sess) return null;
+  if (Date.now() - sess.createdAt > SESSION_TTL_MS) { delete sessions[m[1]]; writeSessions(sessions); return null; }
+  return readUsers().find(u => u.id === sess.userId) || null;
+}
+function destroySession(req) {
+  const cookie = req.headers.cookie || '';
+  const m = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([a-f0-9]+)`));
+  if (m) { const s = readSessions(); delete s[m[1]]; writeSessions(s); }
+}
+
+// Simple in-memory rate limiter
+const _rateBuckets = {};
+function rateLimited(key, max = 5, windowMs = 15 * 60 * 1000) {
+  const now = Date.now();
+  const recent = (_rateBuckets[key] || []).filter(t => now - t < windowMs);
+  recent.push(now);
+  _rateBuckets[key] = recent;
+  return recent.length > max;
+}
+
+function publicUser(u) {
+  if (!u) return null;
+  return { id: u.id, name: u.name, username: u.username, email: u.email, hasTotp: !!u.totpSecret, createdAt: u.createdAt };
+}
+function sendJsonCookie(res, statusCode, data, cookie) {
+  const headers = {
+    'Content-Type': 'application/json; charset=UTF-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+  };
+  if (cookie) headers['Set-Cookie'] = cookie;
+  res.writeHead(statusCode, headers);
+  res.end(JSON.stringify(data));
+}
 
 // --- SERVER HANDLER ---
 const server = http.createServer(async (req, res) => {
@@ -554,6 +698,101 @@ Return ONLY raw valid JSON.`;
         });
       }
 
+      // --- AUTH ROUTES ---
+      if (pathname === '/api/auth/register' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const name = (body.name || '').trim();
+        const username = (body.username || '').trim().toLowerCase();
+        const email = (body.email || '').trim().toLowerCase();
+        const password = body.password || '';
+        const secretQuestion = (body.secretQuestion || '').trim();
+        const secretAnswer = (body.secretAnswer || '').trim().toLowerCase();
+        if (!name || !username || !password || !secretQuestion || !secretAnswer) {
+          return sendJson(res, 400, { success: false, error: 'Name, username, password, secret question and answer are required.' });
+        }
+        if (password.length < 8) {
+          return sendJson(res, 400, { success: false, error: 'Password must be at least 8 characters.' });
+        }
+        const users = readUsers();
+        if (users.some(u => u.username === username || (email && u.email === email))) {
+          return sendJson(res, 409, { success: false, error: 'An account with that username or email already exists.' });
+        }
+        const totpSecret = generateTotpSecret();
+        const user = {
+          id: crypto.randomBytes(12).toString('hex'),
+          name, username, email,
+          passwordHash: hashPassword(password),
+          secretQuestion,
+          secretAnswerHash: hashPassword(secretAnswer),
+          totpSecret,
+          createdAt: Date.now()
+        };
+        users.push(user);
+        writeUsers(users);
+        return sendJson(res, 201, {
+          success: true,
+          user: publicUser(user),
+          totp: { secret: totpSecret, otpauth: otpauthUri(totpSecret, username) }
+        });
+      }
+
+      if (pathname === '/api/auth/login' && req.method === 'POST') {
+        const ip = req.socket.remoteAddress || 'unknown';
+        if (rateLimited('login:' + ip, 8, 10 * 60 * 1000)) {
+          return sendJson(res, 429, { success: false, error: 'Too many attempts. Please try again later.' });
+        }
+        const body = await readJsonBody(req);
+        const username = (body.username || '').trim().toLowerCase();
+        const password = body.password || '';
+        const code = (body.code || body.totp || '').trim();
+        const user = readUsers().find(u => u.username === username || (u.email && u.email === username));
+        if (!user || !verifyPassword(password, user.passwordHash)) {
+          return sendJson(res, 401, { success: false, error: 'Invalid username or password.' });
+        }
+        if (user.totpSecret) {
+          if (!code) {
+            return sendJson(res, 200, { success: false, twoFactor: true, message: 'Enter the 6-digit code from your authenticator app.' });
+          }
+          if (!verifyTotp(user.totpSecret, code)) {
+            return sendJson(res, 401, { success: false, error: 'Invalid authenticator code.' });
+          }
+        }
+        const sid = createSession(user.id);
+        const cookie = `${SESSION_COOKIE}=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`;
+        return sendJsonCookie(res, 200, { success: true, user: publicUser(user) }, cookie);
+      }
+
+      if (pathname === '/api/auth/logout' && req.method === 'POST') {
+        destroySession(req);
+        return sendJsonCookie(res, 200, { success: true }, `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+      }
+
+      if (pathname === '/api/auth/me' && req.method === 'GET') {
+        const user = getSessionUser(req);
+        if (!user) return sendJson(res, 401, { success: false, error: 'Not authenticated' });
+        return sendJson(res, 200, { success: true, user: publicUser(user) });
+      }
+
+      if (pathname === '/api/auth/recover' && req.method === 'POST') {
+        const ip = req.socket.remoteAddress || 'unknown';
+        if (rateLimited('recover:' + ip, 5, 15 * 60 * 1000)) {
+          return sendJson(res, 429, { success: false, error: 'Too many attempts. Please try again later.' });
+        }
+        const body = await readJsonBody(req);
+        const username = (body.username || '').trim().toLowerCase();
+        const secretAnswer = (body.secretAnswer || '').trim().toLowerCase();
+        const newPassword = body.newPassword || '';
+        if (newPassword.length < 8) return sendJson(res, 400, { success: false, error: 'Password must be at least 8 characters.' });
+        const users = readUsers();
+        const user = users.find(u => u.username === username || (u.email && u.email === username));
+        if (!user || !verifyPassword(secretAnswer, user.secretAnswerHash)) {
+          return sendJson(res, 401, { success: false, error: 'Incorrect account or secret answer.' });
+        }
+        user.passwordHash = hashPassword(newPassword);
+        writeUsers(users);
+        return sendJson(res, 200, { success: true, message: 'Password has been reset. You can now log in.' });
+      }
+
       return sendJson(res, 404, { success: false, error: 'API endpoint not found' });
     } catch (apiErr) {
       console.error('API Error:', apiErr);
@@ -565,6 +804,12 @@ Return ONLY raw valid JSON.`;
   let reqPath = parsedUrl.pathname;
   if (reqPath === '/' || reqPath === '') {
     reqPath = '/index.html';
+  }
+
+  // Gate the main app behind authentication
+  if (reqPath === '/index.html' && !getSessionUser(req)) {
+    res.writeHead(302, { Location: '/login.html' });
+    return res.end();
   }
 
   const safePath = path.normalize(reqPath).replace(/^(\.\.[\/\\])+/, '');

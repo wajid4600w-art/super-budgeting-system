@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<!--
+============================================================================
+ Super Budgeting System (SBS) — login.html
+ Authentication page: Login (password + TOTP), Create Account (with secret
+ question + authenticator setup), and Recover (secret question).
+============================================================================
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#18171C">
+  <title>Sign in · Super Budgeting System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: { colors: {
+        lime: { 50:'#F7FEE7',100:'#ECFCCB',200:'#E4F993',300:'#D9F99D',400:'#D4ED76',500:'#B9E36B',700:'#3F6212' },
+        lavender: { 50:'#EEF2FF',100:'#E0E7FF',300:'#A5B4FC',400:'#818CF8',500:'#6366F1',700:'#4338CA' }
+      } } }
+    };
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: 'Manrope','Plus Jakarta Sans',system-ui,sans-serif;
+      background: radial-gradient(circle at 15% 15%, rgba(129,140,248,0.10), transparent 45%),
+                  radial-gradient(circle at 85% 85%, rgba(228,249,147,0.08), transparent 45%), #18171C; }
+    .gloss { background-image: linear-gradient(135deg,#ECFCAA 0%,#E4F993 60%,#D4ED76 100%); color:#23281A; }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 text-slate-100">
+  <div class="w-full max-w-md bg-[#1F1E24] border border-[#2D2C35] rounded-2xl shadow-2xl p-6">
+    <!-- Brand -->
+    <div class="flex items-center gap-3 mb-6">
+      <div class="w-10 h-10 rounded-xl gloss flex items-center justify-center">
+        <i data-lucide="wallet" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-lg leading-tight">SuperBudget</h1>
+        <p class="text-[11px] text-slate-400">Secure sign in to your account</p>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 bg-[#18171C] border border-[#2D2C35] rounded-xl p-1 mb-5 text-xs font-semibold">
+      <button data-tab="login" class="tab-btn flex-1 py-2 rounded-lg bg-[#2D2C35] text-white">Login</button>
+      <button data-tab="register" class="tab-btn flex-1 py-2 rounded-lg text-slate-400">Create Account</button>
+      <button data-tab="recover" class="tab-btn flex-1 py-2 rounded-lg text-slate-400">Recover</button>
+    </div>
+
+    <!-- Message -->
+    <div id="msg" class="hidden text-xs rounded-lg px-3 py-2 mb-4"></div>
+
+    <!-- LOGIN -->
+    <form id="form-login" class="space-y-3 tab-panel">
+      <div>
+        <label class="text-xs font-semibold text-slate-300 block mb-1">Username or Email</label>
+        <input id="login-username" type="text" required class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-300 block mb-1">Password</label>
+        <input id="login-password" type="password" required class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+      </div>
+      <div id="login-code-wrap" class="hidden">
+        <label class="text-xs font-semibold text-slate-300 block mb-1">Authenticator Code (6 digits)</label>
+        <input id="login-code" type="text" inputmode="numeric" maxlength="6" placeholder="000000" class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm tracking-widest text-center outline-none focus:border-lime-400">
+      </div>
+      <button type="submit" class="w-full gloss font-bold text-sm py-2.5 rounded-lg">Sign In</button>
+    </form>
+
+    <!-- REGISTER -->
+    <form id="form-register" class="space-y-3 tab-panel hidden">
+      <div>
+        <label class="text-xs font-semibold text-slate-300 block mb-1">Full Name</label>
+        <input id="reg-name" type="text" required class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-xs font-semibold text-slate-300 block mb-1">Username</label>
+          <input id="reg-username" type="text" required class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-slate-300 block mb-1">Email</label>
+          <input id="reg-email" type="email" required class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+        </div>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-300 block mb-1">Password (min 8 chars)</label>
+        <input id="reg-password" type="password" required minlength="8" class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-300 block mb-1">Secret Question</label>
+        <select id="reg-question" class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+          <option>What is your mother's maiden name?</option>
+          <option>What was your first pet's name?</option>
+          <option>What city were you born in?</option>
+          <option>What is your favorite book?</option>
+          <option>What was the name of your first school?</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-300 block mb-1">Secret Answer</label>
+        <input id="reg-answer" type="text" required class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+      </div>
+      <button type="submit" class="w-full gloss font-bold text-sm py-2.5 rounded-lg">Create Account</button>
+    </form>
+
+    <!-- RECOVER -->
+    <form id="form-recover" class="space-y-3 tab-panel hidden">
+      <div>
+        <label class="text-xs font-semibold text-slate-300 block mb-1">Username or Email</label>
+        <input id="rec-username" type="text" required class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-300 block mb-1">Secret Answer</label>
+        <input id="rec-answer" type="text" required class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-300 block mb-1">New Password (min 8 chars)</label>
+        <input id="rec-password" type="password" required minlength="8" class="w-full px-3 py-2 rounded-lg bg-[#18171C] border border-[#2D2C35] text-sm outline-none focus:border-lime-400">
+      </div>
+      <button type="submit" class="w-full gloss font-bold text-sm py-2.5 rounded-lg">Reset Password</button>
+    </form>
+
+    <!-- TOTP setup (shown after registration) -->
+    <div id="totp-setup" class="hidden space-y-3">
+      <div class="text-sm font-bold text-lime-300">Account created! Set up your authenticator app.</div>
+      <p class="text-xs text-slate-400">Open Google Authenticator / Authy and add a key manually, then enter the 6-digit code when you log in.</p>
+      <div class="bg-[#18171C] border border-[#2D2C35] rounded-lg p-3">
+        <p class="text-[10px] uppercase text-slate-500 font-bold mb-1">Secret Key</p>
+        <p id="totp-secret" class="text-sm font-mono break-all text-lime-200"></p>
+      </div>
+      <a id="totp-uri" href="#" class="block text-center text-xs gloss font-bold py-2 rounded-lg">Open in Authenticator</a>
+      <button id="totp-done" class="w-full bg-[#2D2C35] text-white font-semibold text-sm py-2.5 rounded-lg">Go to Login</button>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const msg = $('msg');
+    function showMsg(text, ok) {
+      msg.classList.remove('hidden');
+      msg.textContent = text;
+      msg.className = 'text-xs rounded-lg px-3 py-2 mb-4 ' + (ok
+        ? 'bg-lime-100 text-lime-800'
+        : 'bg-lavender-100 text-lavender-700');
+    }
+    function clearMsg() { msg.classList.add('hidden'); }
+
+    // Tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          b.classList.remove('bg-[#2D2C35]', 'text-white');
+          b.classList.add('text-slate-400');
+        });
+        btn.classList.add('bg-[#2D2C35]', 'text-white');
+        btn.classList.remove('text-slate-400');
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+        $('form-' + tab).classList.remove('hidden');
+        $('totp-setup').classList.add('hidden');
+        clearMsg();
+      });
+    });
+
+    async function post(url, data) {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      return r.json();
+    }
+
+    // LOGIN
+    $('form-login').addEventListener('submit', async (e) => {
+      e.preventDefault(); clearMsg();
+      const username = $('login-username').value.trim();
+      const password = $('login-password').value;
+      const code = $('login-code').value.trim();
+      const res = await post('/api/auth/login', { username, password, code });
+      if (res.success) { location.href = '/'; return; }
+      if (res.twoFactor) {
+        $('login-code-wrap').classList.remove('hidden');
+        showMsg(res.message || 'Enter your authenticator code.', false);
+        $('login-code').focus();
+        return;
+      }
+      showMsg(res.error || 'Login failed.', false);
+    });
+
+    // REGISTER
+    $('form-register').addEventListener('submit', async (e) => {
+      e.preventDefault(); clearMsg();
+      const payload = {
+        name: $('reg-name').value.trim(),
+        username: $('reg-username').value.trim(),
+        email: $('reg-email').value.trim(),
+        password: $('reg-password').value,
+        secretQuestion: $('reg-question').value,
+        secretAnswer: $('reg-answer').value.trim()
+      };
+      const res = await post('/api/auth/register', payload);
+      if (!res.success) { showMsg(res.error || 'Registration failed.', false); return; }
+      $('totp-secret').textContent = res.totp.secret;
+      $('totp-uri').href = res.totp.otpauth;
+      $('form-register').classList.add('hidden');
+      $('totp-setup').classList.remove('hidden');
+    });
+
+    $('totp-done').addEventListener('click', () => {
+      $('totp-setup').classList.add('hidden');
+      document.querySelector('[data-tab="login"]').click();
+      $('login-username').value = $('reg-username').value;
+    });
+
+    // RECOVER
+    $('form-recover').addEventListener('submit', async (e) => {
+      e.preventDefault(); clearMsg();
+      const res = await post('/api/auth/recover', {
+        username: $('rec-username').value.trim(),
+        secretAnswer: $('rec-answer').value.trim(),
+        newPassword: $('rec-password').value
+      });
+      if (res.success) { showMsg(res.message, true); }
+      else { showMsg(res.error || 'Recovery failed.', false); }
+    });
+
+    lucide.createIcons();
+  </script>
+</body>
+</html>

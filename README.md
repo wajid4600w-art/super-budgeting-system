@@ -55,14 +55,30 @@ Your data is stored locally in your browser (`localStorage`), so it works instan
 
 ---
 
+## 🔐 Authentication
+
+The app ships with a built-in, zero-dependency authentication system (Node `crypto`):
+
+- **Create account** — full name, username/email, password, a **secret question**, and automatic **TOTP** (authenticator app) setup shown as a secret key + `otpauth://` link.
+- **Login** — password + **6-digit authenticator code** (TOTP / RFC 6238, 30s window).
+- **Account recovery** — reset your password using your **secret question** answer.
+- **Security** — passwords hashed with **scrypt** (per-user salt), TOTP verified with a ±1 step window, **HttpOnly** signed session cookies, and **rate limiting** on login/recovery.
+- **Per-user data** — each account's financial data is stored separately in the browser (namespaced by username).
+- **Sign out** — logout button in the sidebar footer.
+
+User accounts and sessions are stored server-side in `data/` (git-ignored). When you open the app unauthenticated, you're redirected to `login.html`.
+
+---
+
 ## 🛠️ Tech Stack
 
 | Layer | Technology |
 | :--- | :--- |
 | Frontend | HTML5, Tailwind CSS (CDN), Lucide icons, Chart.js, Tesseract.js |
-| Backend | Node.js (zero-dependency HTTP server) |
+| Backend | Node.js (zero-dependency HTTP server, `crypto` for auth) |
 | AI | Google Gemini (vision/audio/text), OpenRouter (Nemotron fallback) |
-| Storage | Browser `localStorage` |
+| Auth | scrypt password hashing, RFC-6238 TOTP 2FA, signed session cookies |
+| Storage | Server `data/` (accounts) + browser `localStorage` (per-user finance) |
 | Speech | Web Speech API, MediaRecorder |
 
 ---
@@ -137,11 +153,13 @@ OPENROUTER_API_KEY=your_openrouter_key
 ```text
 super-budgeting-system/
 ├── index.html            # Main web interface (markup, Tailwind config, CSS)
+├── login.html            # Login / register (with TOTP) / recover page
 ├── app.js                # Application state, rendering & client logic
-├── server.js             # Node HTTP server + AI API endpoints
+├── server.js             # Node HTTP server + auth + AI API endpoints
 ├── package.json          # Node start configuration
 ├── run_app.bat           # Windows local launcher
 ├── .env.example          # Environment variable template
+├── data/                 # (git-ignored) user accounts & sessions
 ├── PROJECT_PROPOSAL.md   # Requirements / proposal
 ├── PROJECT_PROPOSAL.html # Rendered proposal
 └── README.md

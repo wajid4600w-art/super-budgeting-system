@@ -23,6 +23,9 @@ __pycache__/
 # Local/other projects (not part of this repo)
 SBS SMART/
 
+# Auth data store (user accounts & sessions)
+data/
+
 # Local binaries / scripts
 cloudflared.exe
 create_repo.ps1
