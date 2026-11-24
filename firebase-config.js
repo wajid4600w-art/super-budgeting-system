@@ -1,13 +1,14 @@
 /*
  * Public Firebase configuration (safe to expose in the browser).
- * Get these from Firebase Console → Project settings → "Your apps" → Web app.
- * Security is enforced by Firestore security rules, not by hiding this config.
+ * The anon/public key is protected by Firestore security rules,
+ * so it is safe to ship — never put a service_role/secret key here.
  */
 window.FIREBASE_CONFIG = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDKoTb72vcjGLycDnYWs1vpzLHV_XTDfX4",
+  authDomain: "sbs-capture.firebaseapp.com",
+  projectId: "sbs-capture",
+  storageBucket: "sbs-capture.firebasestorage.app",
+  messagingSenderId: "661094969406",
+  appId: "1:661094969406:web:42aab782ac11e352d2616f",
+  measurementId: "G-YGJTFHS0W0"
 };
