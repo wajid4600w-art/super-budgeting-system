@@ -518,6 +518,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  if (authUser) {
+    // Remember-me expiry (30 days)
+    const until = Number(localStorage.getItem("sbs_remember_until") || 0);
+    if (until && Date.now() > until) {
+      try { await window.auth.signOut(); } catch (e) {}
+      localStorage.removeItem("sbs_2fa");
+      localStorage.removeItem("sbs_remember_until");
+      location.href = "login.html";
+      return;
+    }
+    // Two-factor gate (authenticator app)
+    const ok2fa = localStorage.getItem("sbs_2fa") === "ok" || sessionStorage.getItem("sbs_2fa") === "ok";
+    if (!ok2fa) {
+      location.href = "login.html";
+      return;
+    }
+  }
+
   if (authUser) SBS_USER = authUser.email || authUser.name;
 
   // Load local state immediately (never block init on the network).
@@ -561,6 +579,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 // ===== logout (L?) =====
 async function logout() {
   try { if (window.auth) await window.auth.signOut(); } catch (e) {}
+  try { localStorage.removeItem("sbs_2fa"); sessionStorage.removeItem("sbs_2fa"); } catch (e) {}
   location.href = "login.html";
 }
 

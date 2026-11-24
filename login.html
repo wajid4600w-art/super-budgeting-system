@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <!--
 ============================================================================
- Super Budgeting System (SBS) — login.html (Firebase Auth)
- Sign in with Google, or email + password. Redirects to the app on success.
+ Super Budgeting System (SBS) — login.html (Firebase Auth + TOTP 2FA)
+ Sign in with Google or email/password, then verify an authenticator code.
+ "Remember me" keeps the session for 30 days.
 ============================================================================
 -->
 <html lang="en">
@@ -19,7 +20,10 @@
   </script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="firebase-config.js"></script>
+  <script src="totp.js"></script>
   <style>
     body { font-family: 'Manrope', system-ui, sans-serif;
       background: radial-gradient(circle at 15% 15%, rgba(129,140,248,0.10), transparent 45%),
@@ -46,7 +50,6 @@
 
     <div id="msg" class="hidden text-xs rounded-lg px-3 py-2 mb-4"></div>
 
-    <!-- Google sign-in (works for both login & signup) -->
     <button id="google-btn" class="w-full flex items-center justify-center gap-2 bg-white text-slate-800 font-semibold text-sm py-2.5 rounded-lg mb-4 hover:bg-slate-100 transition">
       <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.8l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
       <span>Continue with Google</span>
@@ -56,7 +59,6 @@
       <div class="flex-1 h-px bg-[#323540]"></div><span>or</span><div class="flex-1 h-px bg-[#323540]"></div>
     </div>
 
-    <!-- LOGIN -->
     <form id="form-login" class="space-y-3 tab-panel">
       <div>
         <label class="text-xs font-semibold text-slate-300 block mb-1">Email</label>
@@ -66,10 +68,12 @@
         <label class="text-xs font-semibold text-slate-300 block mb-1">Password</label>
         <input id="login-password" type="password" required class="w-full px-3 py-2 rounded-lg bg-[#1E1F24] border border-[#323540] text-sm outline-none focus:border-lime-400">
       </div>
+      <label class="flex items-center gap-2 text-xs text-slate-300">
+        <input id="remember-login" type="checkbox" class="accent-lime-400"> Remember me for 30 days
+      </label>
       <button type="submit" class="w-full gloss font-bold text-sm py-2.5 rounded-lg">Sign In</button>
     </form>
 
-    <!-- REGISTER -->
     <form id="form-register" class="space-y-3 tab-panel hidden">
       <div>
         <label class="text-xs font-semibold text-slate-300 block mb-1">Full Name</label>
@@ -83,21 +87,31 @@
         <label class="text-xs font-semibold text-slate-300 block mb-1">Password (min 8 chars)</label>
         <input id="reg-password" type="password" required minlength="8" class="w-full px-3 py-2 rounded-lg bg-[#1E1F24] border border-[#323540] text-sm outline-none focus:border-lime-400">
       </div>
+      <label class="flex items-center gap-2 text-xs text-slate-300">
+        <input id="remember-register" type="checkbox" class="accent-lime-400"> Remember me for 30 days
+      </label>
       <button type="submit" class="w-full gloss font-bold text-sm py-2.5 rounded-lg">Create Account</button>
     </form>
   </div>
 
-  <!-- Set password after first Google sign-in -->
-  <div id="setpw" class="hidden fixed inset-0 bg-slate-900/70 flex items-center justify-center p-4 z-50">
+  <!-- 2FA / Authenticator -->
+  <div id="twofa" class="hidden fixed inset-0 bg-slate-900/70 flex items-center justify-center p-4 z-50">
     <div class="bg-[#25272E] border border-[#323540] rounded-2xl p-6 max-w-sm w-full space-y-3">
-      <h3 class="font-bold text-white text-lg">Set a password</h3>
-      <p class="text-xs text-slate-400">You signed in with Google. Set a password so you can also log in with your email next time.</p>
-      <form id="setpw-form" class="space-y-3">
-        <input id="setpw-password" type="password" placeholder="Password (min 8 chars)" class="w-full px-3 py-2 rounded-lg bg-[#1E1F24] border border-[#323540] text-sm text-white outline-none focus:border-lime-400">
-        <input id="setpw-confirm" type="password" placeholder="Confirm password" class="w-full px-3 py-2 rounded-lg bg-[#1E1F24] border border-[#323540] text-sm text-white outline-none focus:border-lime-400">
-        <button type="submit" class="w-full gloss font-bold text-sm py-2.5 rounded-lg">Set Password & Continue</button>
-      </form>
-      <p id="setpw-msg" class="text-xs text-red-300 hidden"></p>
+      <h3 id="twofa-title" class="font-bold text-white text-lg">Two-factor authentication</h3>
+      <p id="twofa-desc" class="text-xs text-slate-400"></p>
+      <div id="twofa-qr-wrap" class="hidden flex justify-center">
+        <div id="twofa-qr" class="bg-white p-2 rounded-lg"></div>
+      </div>
+      <div id="twofa-secret-wrap" class="hidden bg-[#1E1F24] border border-[#323540] rounded-lg p-2">
+        <p class="text-[10px] uppercase text-slate-500 font-bold">Manual key</p>
+        <p id="twofa-secret" class="text-xs font-mono break-all text-lime-200"></p>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-300 block mb-1">6-digit code</label>
+        <input id="twofa-code" inputmode="numeric" maxlength="6" placeholder="000000" class="w-full px-3 py-2 rounded-lg bg-[#1E1F24] border border-[#323540] text-sm tracking-widest text-center text-white outline-none focus:border-lime-400">
+      </div>
+      <button id="twofa-submit" class="w-full gloss font-bold text-sm py-2.5 rounded-lg">Verify</button>
+      <p id="twofa-msg" class="text-xs text-red-300 hidden"></p>
     </div>
   </div>
 
@@ -115,14 +129,10 @@
     try {
       if (window.FIREBASE_CONFIG && window.firebase) {
         firebase.initializeApp(window.FIREBASE_CONFIG);
-        firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
         firebaseReady = true;
       }
     } catch (e) { console.warn(e); }
-
-    if (!firebaseReady) {
-      showMsg('Firebase is not configured. Fill in firebase-config.js.', false);
-    }
+    if (!firebaseReady) showMsg('Firebase is not configured. Fill in firebase-config.js.', false);
 
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -137,56 +147,124 @@
 
     function go() { location.href = 'index.html'; }
 
-    let pendingUser = null;
+    async function setRemember(remember) {
+      try {
+        await firebase.auth().setPersistence(remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
+        if (remember) localStorage.setItem('sbs_remember_until', String(Date.now() + 30 * 24 * 3600 * 1000));
+        else localStorage.removeItem('sbs_remember_until');
+      } catch (e) {}
+    }
+
+    let pendingUser = null, pendingSecret = null, twofaMode = null;
+
+    function show2FA(mode, secret, account) {
+      twofaMode = mode;
+      pendingSecret = secret;
+      $('twofa').classList.remove('hidden');
+      $('twofa-code').value = '';
+      $('twofa-msg').classList.add('hidden');
+      if (mode === 'enroll') {
+        $('twofa-title').textContent = 'Set up authenticator';
+        $('twofa-desc').textContent = 'Scan the QR with Google Authenticator / Authy, then enter the 6-digit code.';
+        $('twofa-qr-wrap').classList.remove('hidden');
+        $('twofa-secret-wrap').classList.remove('hidden');
+        $('twofa-secret').textContent = secret;
+        $('twofa-qr').innerHTML = '';
+        try { new QRCode($('twofa-qr'), { text: window.SBSTOTP.otpauthUri(secret, account), width: 160, height: 160 }); } catch (e) {}
+        $('twofa-submit').textContent = 'Enable & Continue';
+      } else {
+        $('twofa-title').textContent = 'Two-factor authentication';
+        $('twofa-desc').textContent = 'Enter the 6-digit code from your authenticator app.';
+        $('twofa-qr-wrap').classList.add('hidden');
+        $('twofa-secret-wrap').classList.add('hidden');
+        $('twofa-submit').textContent = 'Verify';
+      }
+      setTimeout(() => $('twofa-code').focus(), 100);
+    }
+
+    async function afterAuth(cred, remember) {
+      await setRemember(remember);
+      pendingUser = cred.user;
+      try {
+        const db = firebase.firestore();
+        const doc = await db.collection('users').doc(cred.user.uid).get();
+        const secret = doc.exists && doc.data().totpSecret ? doc.data().totpSecret : null;
+        if (secret) show2FA('challenge', secret, cred.user.email);
+        else show2FA('enroll', window.SBSTOTP.generateSecret(), cred.user.email);
+      } catch (e) {
+        // If Firestore is unavailable, still allow (2FA can be set up later).
+        sessionStorage.setItem('sbs_2fa', 'ok');
+        if (remember) localStorage.setItem('sbs_2fa', 'ok');
+        go();
+      }
+    }
+
+    $('twofa-submit').addEventListener('click', async () => {
+      const code = $('twofa-code').value.trim();
+      const ok = await window.SBSTOTP.verify(pendingSecret, code);
+      if (!ok) { $('twofa-msg').textContent = 'Invalid code.'; $('twofa-msg').classList.remove('hidden'); return; }
+      try {
+        if (twofaMode === 'enroll') {
+          await firebase.firestore().collection('users').doc(pendingUser.uid).set({ totpSecret: pendingSecret }, { merge: true });
+        }
+        sessionStorage.setItem('sbs_2fa', 'ok');
+        if (localStorage.getItem('sbs_remember_until')) localStorage.setItem('sbs_2fa', 'ok');
+        $('twofa').classList.add('hidden');
+        go();
+      } catch (e) {
+        $('twofa-msg').textContent = e.message || 'Could not save 2FA.';
+        $('twofa-msg').classList.remove('hidden');
+      }
+    });
+
     $('google-btn').addEventListener('click', async () => {
       clearMsg();
       if (!firebaseReady) return;
+      const remember = $('remember-login').checked || $('remember-register').checked;
       try {
+        await setRemember(remember);
         const provider = new firebase.auth.GoogleAuthProvider();
         const cred = await firebase.auth().signInWithPopup(provider);
+        // First Google login: also require a password for future email login.
         const hasPassword = (cred.user.providerData || []).some(p => p.providerId === 'password');
-        if (hasPassword) { go(); return; }
-        // First Google login → require setting a password for future email login.
-        pendingUser = cred.user;
-        $('setpw-msg').classList.add('hidden');
-        $('setpw').classList.remove('hidden');
+        if (!hasPassword) {
+          // Ask for a password first, then 2FA.
+          pendingUser = cred.user;
+          showSetPassword(cred, remember);
+          return;
+        }
+        await afterAuth(cred, remember);
       } catch (e) { showMsg(e.message || 'Google sign-in failed.', false); }
     });
 
-    $('setpw-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const pw = $('setpw-password').value;
-      const confirm = $('setpw-confirm').value;
-      const m = $('setpw-msg');
-      if (pw.length < 8) { m.textContent = 'Password must be at least 8 characters.'; m.classList.remove('hidden'); return; }
-      if (pw !== confirm) { m.textContent = 'Passwords do not match.'; m.classList.remove('hidden'); return; }
-      try {
-        await pendingUser.updatePassword(pw);
-        pendingUser = null;
-        $('setpw').classList.add('hidden');
-        go();
-      } catch (e) {
-        m.textContent = e.message || 'Could not set password. Please sign in again.';
-        m.classList.remove('hidden');
-      }
-    });
+    // Inline set-password prompt (first Google login)
+    function showSetPassword(cred, remember) {
+      const pw = prompt('Set a password (min 8 chars) so you can also log in by email:');
+      if (!pw) { afterAuth(cred, remember); return; }
+      if (pw.length < 8) { showMsg('Password must be at least 8 characters.', false); return; }
+      cred.user.updatePassword(pw).then(() => afterAuth(cred, remember)).catch(e => showMsg(e.message || 'Could not set password.', false));
+    }
 
     $('form-login').addEventListener('submit', async (e) => {
       e.preventDefault(); clearMsg();
       if (!firebaseReady) return;
+      const remember = $('remember-login').checked;
       try {
-        await firebase.auth().signInWithEmailAndPassword($('login-email').value.trim(), $('login-password').value);
-        go();
+        await setRemember(remember);
+        const cred = await firebase.auth().signInWithEmailAndPassword($('login-email').value.trim(), $('login-password').value);
+        await afterAuth(cred, remember);
       } catch (e) { showMsg(e.message || 'Login failed.', false); }
     });
 
     $('form-register').addEventListener('submit', async (e) => {
       e.preventDefault(); clearMsg();
       if (!firebaseReady) return;
+      const remember = $('remember-register').checked;
       try {
+        await setRemember(remember);
         const cred = await firebase.auth().createUserWithEmailAndPassword($('reg-email').value.trim(), $('reg-password').value);
         try { await cred.user.updateProfile({ displayName: $('reg-name').value.trim() }); } catch (err) {}
-        go();
+        await afterAuth(cred, remember);
       } catch (e) { showMsg(e.message || 'Registration failed.', false); }
     });
   </script>

@@ -5,6 +5,10 @@ service cloud.firestore {
     match /finance_state/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
+    // Per-user profile (stores the TOTP secret for 2FA).
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
     // Any signed-in user can submit feedback; only the console/admin can read.
     match /feedback/{id} {
       allow create: if request.auth != null;
