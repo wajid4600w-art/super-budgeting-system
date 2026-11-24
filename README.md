@@ -130,6 +130,8 @@ ADMIN_TOKEN=change_me_admin_token
 ```
 
 ### Cloud database (optional, Supabase free tier)
+> Full step-by-step setup (project creation, SQL, env vars, deploy, admin) is in **[`SUPABASE_SETUP.md`](SUPABASE_SETUP.md)**.
+
 When `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set, the server stores **users, per-user finance state, and feedback** in Supabase Postgres instead of local files. Create these tables once in the Supabase SQL editor:
 
 ```sql
@@ -194,6 +196,7 @@ super-budgeting-system/
 ├── package.json          # Node start configuration
 ├── run_app.bat           # Windows local launcher
 ├── .env.example          # Environment variable template
+├── SUPABASE_SETUP.md     # Full Supabase configuration guide (SQL + steps)
 ├── data/                 # (git-ignored) user accounts & sessions
 ├── PROJECT_PROPOSAL.md   # Requirements / proposal
 ├── PROJECT_PROPOSAL.html # Rendered proposal
