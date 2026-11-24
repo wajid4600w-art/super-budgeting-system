@@ -311,6 +311,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     appState.user.name = authUser.name || appState.user.name;
     appState.user.email = authUser.email || appState.user.email;
     saveState();
+    const nameEl = document.getElementById("sidebar-user-name");
+    if (nameEl) nameEl.innerText = appState.user.name;
+    updateUserAvatar();
   }
   initTheme();
   initCategoriesDropdowns();
@@ -417,39 +420,49 @@ function toggleSidebarPin() {
 // ===== loadState (L357-L391) =====
 let SBS_USER = null;
 function stateKey() { return "super_budget_state" + (SBS_USER ? "::" + SBS_USER : ""); }
+function updateUserAvatar() {
+  const avatar = document.getElementById("sidebar-user-avatar");
+  if (!avatar) return;
+  const initials = (appState.user.name || "U").split(/\s+/).map(w => w[0] || "").slice(0, 2).join("").toUpperCase();
+  avatar.innerText = initials || "U";
+}
+
+// Fresh, empty state for new accounts (keeps categories, clears all data)
+function createEmptyState() {
+  const base = JSON.parse(JSON.stringify(INITIAL_DATA));
+  return {
+    user: { name: "User", email: "", currency: "SAR", warningThreshold: 80, aiEnabled: true, geminiApiKey: "", theme: "light" },
+    globalBudget: 0,
+    categories: base.categories.map(c => Object.assign({}, c, { budget: 0 })),
+    transactions: [],
+    savingsGoals: [],
+    recurring: [],
+    notifications: []
+  };
+}
 
 function loadState() {
   const stored = localStorage.getItem(stateKey());
   if (stored) {
     try {
       appState = JSON.parse(stored);
-      // Ensure rich ocrData migration for demo entries
-      if (appState.transactions) {
-        const sampleTxs = INITIAL_DATA.transactions;
-        sampleTxs.forEach(stx => {
-          const existing = appState.transactions.find(t => t.id === stx.id);
-          if (existing && stx.ocrData && !existing.ocrData) {
-            existing.ocrData = stx.ocrData;
-          }
-        });
-        // If tx-11 is not yet in state, insert it
-        if (!appState.transactions.some(t => t.id === "tx-11")) {
-          const tx11 = sampleTxs.find(t => t.id === "tx-11");
-          if (tx11) appState.transactions.splice(8, 0, tx11);
-        }
-        saveState();
-      }
+      if (!Array.isArray(appState.transactions)) appState.transactions = [];
+      if (!Array.isArray(appState.savingsGoals)) appState.savingsGoals = [];
+      if (!Array.isArray(appState.recurring)) appState.recurring = [];
+      if (!Array.isArray(appState.notifications)) appState.notifications = [];
+      if (!Array.isArray(appState.categories) || appState.categories.length === 0) appState.categories = createEmptyState().categories;
     } catch (e) {
-      appState = JSON.parse(JSON.stringify(INITIAL_DATA));
+      appState = createEmptyState();
       saveState();
     }
   } else {
-    appState = JSON.parse(JSON.stringify(INITIAL_DATA));
+    appState = createEmptyState();
     saveState();
   }
 
   // Update UI user name & currency
   document.getElementById("sidebar-user-name").innerText = appState.user.name;
+  updateUserAvatar();
   const curSel = document.getElementById("currency-select");
   if (curSel) curSel.value = appState.user.currency;
   updateCurrencyLabels();
@@ -671,8 +684,8 @@ function renderDashboard() {
   });
 
   const netBalance = totalIncome - totalExpenses;
-  const budgetLimit = appState.globalBudget || 3500;
-  const budgetPct = Math.min(100, Math.round((totalExpenses / budgetLimit) * 100));
+  const budgetLimit = appState.globalBudget || 0;
+  const budgetPct = budgetLimit > 0 ? Math.min(100, Math.round((totalExpenses / budgetLimit) * 100)) : 0;
   const budgetRemaining = Math.max(0, budgetLimit - totalExpenses);
 
   // Premium dashboard overview
@@ -716,7 +729,10 @@ function renderDashboard() {
   budgetBar.style.width = `${budgetPct}%`;
 
   const badgeEl = document.getElementById("stat-budget-badge");
-  if (budgetPct >= 100) {
+  if (budgetLimit <= 0) {
+    badgeEl.className = "text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400";
+    badgeEl.innerText = "No budget set";
+  } else if (budgetPct >= 100) {
     budgetBar.className = "h-full rounded-full bg-lavender-500 transition-all duration-500";
     badgeEl.className = "text-xs font-bold px-2 py-0.5 rounded-full bg-lavender-100 text-lavender-700 dark:bg-lavender-500/20 dark:text-lavender-300";
     badgeEl.innerText = "Exceeded";
@@ -783,12 +799,12 @@ function checkThresholdAlerts(totalExpenses, budgetLimit, categorySpending) {
   let msg = "";
 
   // Check global budget
-  if (totalExpenses >= budgetLimit) {
+  if (budgetLimit > 0 && totalExpenses >= budgetLimit) {
     triggered = true;
     title = "Monthly Budget Limit Exceeded!";
     msg = `You have spent ${formatMoney(totalExpenses)} ${getCurrencySymbol()} which exceeds your ${formatMoney(budgetLimit)} ${getCurrencySymbol()} ceiling.`;
     alertBanner.className = "p-4 rounded-xl border border-lavender-200 dark:border-lavender-500/40 bg-lavender-50 dark:bg-lavender-500/10 text-lavender-700 dark:text-lavender-200 flex items-center justify-between";
-  } else if ((totalExpenses / budgetLimit) >= ((appState.user.warningThreshold || 80) / 100)) {
+  } else if (budgetLimit > 0 && (totalExpenses / budgetLimit) >= ((appState.user.warningThreshold || 80) / 100)) {
     triggered = true;
     title = "Approaching Monthly Budget Limit";
     msg = `You have consumed ${Math.round((totalExpenses / budgetLimit) * 100)}% of your monthly budget.`;
@@ -1221,7 +1237,7 @@ function setTxType(type) {
 // --- BUDGETS & LIMITS MANAGEMENT ---
 // ===== renderBudgets (L1158-L1220) =====
 function renderBudgets() {
-  document.getElementById("budget-global-display").innerText = formatMoney(appState.globalBudget || 3500);
+  document.getElementById("budget-global-display").innerText = formatMoney(appState.globalBudget || 0);
 
   // Compute category spendings
   const spendings = {};
@@ -1295,7 +1311,7 @@ function promptEditGlobalBudget() {
   _budgetEditTarget = { type: "global" };
   document.getElementById("budget-edit-title").innerText = "Edit Global Monthly Budget";
   const inp = document.getElementById("budget-edit-input");
-  const disp = convertFromSAR(appState.globalBudget || 3500, appState.user.currency || "SAR");
+  const disp = convertFromSAR(appState.globalBudget || 0, appState.user.currency || "SAR");
   inp.value = Number(disp.toFixed(2));
   const cur = document.getElementById("budget-edit-currency");
   if (cur) cur.innerText = getCurrencySymbol();
