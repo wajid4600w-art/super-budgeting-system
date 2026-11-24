@@ -18,6 +18,22 @@ function getActiveGeminiKey() {
 }
 // ===== end getActiveGeminiKey (L18) =====
 
+// --- GLOBAL ERROR VISIBILITY (helps debug blank/broken UI) ---
+window.addEventListener("error", (e) => {
+  console.error("SBS error:", e.message, "@", e.filename + ":" + e.lineno);
+  try {
+    if (document.body && !window.__sbsErrShown) {
+      window.__sbsErrShown = true;
+      const t = document.createElement("div");
+      t.style.cssText = "position:fixed;bottom:12px;left:12px;right:12px;z-index:99999;background:#DC2626;color:#fff;padding:10px 14px;border-radius:10px;font:12px monospace;white-space:pre-wrap";
+      t.textContent = "JS Error: " + e.message + " (line " + e.lineno + ")";
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 9000);
+    }
+  } catch (_) {}
+});
+window.addEventListener("unhandledrejection", (e) => { console.error("SBS rejection:", e.reason); });
+
 // --- INITIAL SAMPLE DATA (Pre-seeded in SAR) ---
 const INITIAL_DATA = {
   user: {
@@ -508,7 +524,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (authUser) {
     await loadFinanceFromCloud();
   }
-  loadState();
+  try { loadState(); } catch (e) { console.warn("loadState failed:", e); appState = createEmptyState(); }
   if (authUser) {
     appState.user.name = authUser.name || appState.user.name;
     appState.user.email = authUser.email || appState.user.email;
