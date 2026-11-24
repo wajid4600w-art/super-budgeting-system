@@ -87,6 +87,20 @@
     </form>
   </div>
 
+  <!-- Set password after first Google sign-in -->
+  <div id="setpw" class="hidden fixed inset-0 bg-slate-900/70 flex items-center justify-center p-4 z-50">
+    <div class="bg-[#25272E] border border-[#323540] rounded-2xl p-6 max-w-sm w-full space-y-3">
+      <h3 class="font-bold text-white text-lg">Set a password</h3>
+      <p class="text-xs text-slate-400">You signed in with Google. Set a password so you can also log in with your email next time.</p>
+      <form id="setpw-form" class="space-y-3">
+        <input id="setpw-password" type="password" placeholder="Password (min 8 chars)" class="w-full px-3 py-2 rounded-lg bg-[#1E1F24] border border-[#323540] text-sm text-white outline-none focus:border-lime-400">
+        <input id="setpw-confirm" type="password" placeholder="Confirm password" class="w-full px-3 py-2 rounded-lg bg-[#1E1F24] border border-[#323540] text-sm text-white outline-none focus:border-lime-400">
+        <button type="submit" class="w-full gloss font-bold text-sm py-2.5 rounded-lg">Set Password & Continue</button>
+      </form>
+      <p id="setpw-msg" class="text-xs text-red-300 hidden"></p>
+    </div>
+  </div>
+
   <script>
     const $ = id => document.getElementById(id);
     const msg = $('msg');
@@ -123,14 +137,38 @@
 
     function go() { location.href = 'index.html'; }
 
+    let pendingUser = null;
     $('google-btn').addEventListener('click', async () => {
       clearMsg();
       if (!firebaseReady) return;
       try {
         const provider = new firebase.auth.GoogleAuthProvider();
-        await firebase.auth().signInWithPopup(provider);
-        go();
+        const cred = await firebase.auth().signInWithPopup(provider);
+        const hasPassword = (cred.user.providerData || []).some(p => p.providerId === 'password');
+        if (hasPassword) { go(); return; }
+        // First Google login → require setting a password for future email login.
+        pendingUser = cred.user;
+        $('setpw-msg').classList.add('hidden');
+        $('setpw').classList.remove('hidden');
       } catch (e) { showMsg(e.message || 'Google sign-in failed.', false); }
+    });
+
+    $('setpw-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pw = $('setpw-password').value;
+      const confirm = $('setpw-confirm').value;
+      const m = $('setpw-msg');
+      if (pw.length < 8) { m.textContent = 'Password must be at least 8 characters.'; m.classList.remove('hidden'); return; }
+      if (pw !== confirm) { m.textContent = 'Passwords do not match.'; m.classList.remove('hidden'); return; }
+      try {
+        await pendingUser.updatePassword(pw);
+        pendingUser = null;
+        $('setpw').classList.add('hidden');
+        go();
+      } catch (e) {
+        m.textContent = e.message || 'Could not set password. Please sign in again.';
+        m.classList.remove('hidden');
+      }
     });
 
     $('form-login').addEventListener('submit', async (e) => {

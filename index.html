@@ -2450,6 +2450,11 @@
     </div>
   </div>
 
+  <!-- Toast notification -->
+  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 translate-y-20 opacity-0 z-[100] bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg transition-all duration-300">
+    <span id="toast-msg"></span>
+  </div>
+
   <!-- Firebase (Auth + Firestore) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
@@ -2466,6 +2471,6 @@
   </script>
 
   <!-- Application Logic JavaScript (Cache-Busted for Mobile Updates) -->
-  <script src="app.js?v=3.0.6"></script>
+  <script src="app.js?v=3.0.7"></script>
 </body>
 </html>

@@ -4110,7 +4110,8 @@ function populateCategorySelect(elementId, type = "all", includeAllOption = fals
 function showToast(message) {
   const toast = document.getElementById("toast");
   const msgEl = document.getElementById("toast-msg");
-  msgEl.innerText = message;
+  if (msgEl) msgEl.innerText = message;
+  if (!toast) return;
   toast.classList.remove("translate-y-20", "opacity-0");
 
   setTimeout(() => {
