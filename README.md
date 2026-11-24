@@ -122,7 +122,38 @@ Create a `.env` file in the project root (see `.env.example`):
 PORT=3000
 GEMINI_API_KEY=your_gemini_key
 OPENROUTER_API_KEY=your_openrouter_key
+
+# Optional: Supabase cloud database (users, finance, feedback) + /admin
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+ADMIN_TOKEN=change_me_admin_token
 ```
+
+### Cloud database (optional, Supabase free tier)
+When `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set, the server stores **users, per-user finance state, and feedback** in Supabase Postgres instead of local files. Create these tables once in the Supabase SQL editor:
+
+```sql
+create table if not exists app_users (
+  id text primary key, name text not null, username text unique not null,
+  email text, password_hash text not null, secret_question text,
+  secret_answer_hash text, totp_secret text, created_at timestamptz default now());
+create table if not exists finance_state (
+  user_id text primary key references app_users(id) on delete cascade,
+  data jsonb not null, updated_at timestamptz default now());
+create table if not exists feedback (
+  id uuid primary key default gen_random_uuid(),
+  user_id text references app_users(id) on delete set null,
+  username text, message text not null, created_at timestamptz default now());
+create table if not exists admin_config (id int primary key default 1, admin_token text not null);
+insert into admin_config (id, admin_token) values (1, 'change_me_admin_token') on conflict (id) do nothing;
+alter table app_users enable row level security;
+alter table finance_state enable row level security;
+alter table feedback enable row level security;
+alter table admin_config enable row level security;
+-- No anon policies: only the server's service role can read/write.
+```
+
+Then open **`/admin.html`**, enter the admin token, and you'll see total users (name, username, email, joined) and all feedback (who, when, message).
 
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
@@ -132,6 +163,9 @@ OPENROUTER_API_KEY=your_openrouter_key
 | `/api/ai/voice-parse` | POST | Parse spoken/typed phrases |
 | `/api/ai/voice-audio` | POST | Transcribe audio + parse transaction |
 | `/api/ai/advisor` | POST | Financial wellness analysis & recommendations |
+| `/api/finance/load` · `/api/finance/save` | GET · PUT | Load/save per-user finance state (Supabase) |
+| `/api/feedback` | POST | Store user feedback/complaints |
+| `/api/admin/data` | GET | Admin-only: users + feedback (requires `x-admin-token`) |
 
 > **Security:** never commit secrets. `.env` is git-ignored. Keys set in the browser/localStorage are visible to users on static hosts — prefer server-side environment variables for public deployments.
 
@@ -144,7 +178,7 @@ OPENROUTER_API_KEY=your_openrouter_key
 3. **Dictate** — use **Voice** to speak a phrase or record/upload audio.
 4. **Set budgets** — open **Budgets & Limits** to edit the global ceiling and each category limit (with a proper edit popup and a ✕ to delete categories).
 5. **Reports** — open **Financial Reports** to view/print/save a statement, or export CSV/JSON.
-6. **Switch accounts** — use the account switcher in the sidebar footer.
+6. **Account** — sign in / out from the sidebar footer; each account's finance data is stored separately (and synced to Supabase when configured).
 
 ---
 
@@ -154,6 +188,7 @@ OPENROUTER_API_KEY=your_openrouter_key
 super-budgeting-system/
 ├── index.html            # Main web interface (markup, Tailwind config, CSS)
 ├── login.html            # Login / register (with TOTP) / recover page
+├── admin.html            # Protected developer view (users + feedback)
 ├── app.js                # Application state, rendering & client logic
 ├── server.js             # Node HTTP server + auth + AI API endpoints
 ├── package.json          # Node start configuration

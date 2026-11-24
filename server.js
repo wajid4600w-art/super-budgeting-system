@@ -37,6 +37,12 @@ const PUBLIC_DIR = __dirname;
 const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || '';
 
+// Supabase (optional). When configured, users/finance/feedback are stored in Postgres.
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=UTF-8',
   '.js': 'text/javascript; charset=UTF-8',
@@ -197,10 +203,10 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
-function readUsers() {
+function readUsersFile() {
   try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); } catch (e) { return []; }
 }
-function writeUsers(users) {
+function writeUsersFile(users) {
   ensureDataDir();
   fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
 }
@@ -210,6 +216,100 @@ function readSessions() {
 function writeSessions(s) {
   ensureDataDir();
   fs.writeFileSync(SESSIONS_FILE, JSON.stringify(s, null, 2));
+}
+
+// --- Supabase REST helper (service role; server-side only) ---
+async function sbFetch(pathname, opts = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${pathname}`, {
+    method: opts.method || 'GET',
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      ...(opts.headers || {})
+    },
+    body: opts.body
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`Supabase ${res.status}: ${t}`);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// Map between DB (snake_case) and app (camelCase) user shapes
+function toDbUser(u) {
+  return {
+    id: u.id, name: u.name, username: u.username, email: u.email || null,
+    password_hash: u.passwordHash,
+    secret_question: u.secretQuestion || null,
+    secret_answer_hash: u.secretAnswerHash || null,
+    totp_secret: u.totpSecret || null
+  };
+}
+function fromDbUser(r) {
+  return {
+    id: r.id, name: r.name, username: r.username, email: r.email || '',
+    passwordHash: r.password_hash, secretQuestion: r.secret_question || '',
+    secretAnswerHash: r.secret_answer_hash || '', totpSecret: r.totp_secret || '',
+    createdAt: r.created_at
+  };
+}
+
+// User access (Supabase when configured, else JSON file)
+async function listUsers() {
+  if (USE_SUPABASE) {
+    const rows = await sbFetch('app_users?select=id,name,username,email,created_at&order=created_at.desc');
+    return Array.isArray(rows) ? rows : [];
+  }
+  return readUsersFile();
+}
+async function findUser(usernameOrEmail) {
+  const u = String(usernameOrEmail || '').trim().toLowerCase();
+  if (USE_SUPABASE) {
+    const rows = await sbFetch(`app_users?select=*&or=(username.eq.${encodeURIComponent(u)},email.eq.${encodeURIComponent(u)})`);
+    return Array.isArray(rows) && rows.length ? fromDbUser(rows[0]) : null;
+  }
+  return readUsersFile().find(x => x.username === u || (x.email && x.email === u)) || null;
+}
+async function findUserById(id) {
+  if (USE_SUPABASE) {
+    const rows = await sbFetch(`app_users?select=*&id=eq.${encodeURIComponent(id)}`);
+    return Array.isArray(rows) && rows.length ? fromDbUser(rows[0]) : null;
+  }
+  return readUsersFile().find(x => x.id === id) || null;
+}
+async function userExists(username, email) {
+  if (USE_SUPABASE) {
+    const byName = await sbFetch(`app_users?select=id&username=eq.${encodeURIComponent(username)}`);
+    if (Array.isArray(byName) && byName.length) return true;
+    if (email) {
+      const byEmail = await sbFetch(`app_users?select=id&email=eq.${encodeURIComponent(email)}`);
+      if (Array.isArray(byEmail) && byEmail.length) return true;
+    }
+    return false;
+  }
+  return readUsersFile().some(x => x.username === username || (email && x.email === email));
+}
+async function insertUser(user) {
+  if (USE_SUPABASE) {
+    await sbFetch('app_users', { method: 'POST', body: JSON.stringify(toDbUser(user)), headers: { 'Prefer': 'return=minimal' } });
+    return user;
+  }
+  const users = readUsersFile();
+  users.push(user);
+  writeUsersFile(users);
+  return user;
+}
+async function updateUserPassword(userId, hash) {
+  if (USE_SUPABASE) {
+    await sbFetch(`app_users?id=eq.${encodeURIComponent(userId)}`, { method: 'PATCH', body: JSON.stringify({ password_hash: hash }), headers: { 'Prefer': 'return=minimal' } });
+    return;
+  }
+  const users = readUsersFile();
+  const u = users.find(x => x.id === userId);
+  if (u) { u.passwordHash = hash; writeUsersFile(users); }
 }
 
 // Password hashing with scrypt (salt:hash)
@@ -286,7 +386,7 @@ function createSession(userId) {
   writeSessions(sessions);
   return sid;
 }
-function getSessionUser(req) {
+async function getSessionUser(req) {
   const cookie = req.headers.cookie || '';
   const m = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([a-f0-9]+)`));
   if (!m) return null;
@@ -294,7 +394,7 @@ function getSessionUser(req) {
   const sess = sessions[m[1]];
   if (!sess) return null;
   if (Date.now() - sess.createdAt > SESSION_TTL_MS) { delete sessions[m[1]]; writeSessions(sessions); return null; }
-  return readUsers().find(u => u.id === sess.userId) || null;
+  return await findUserById(sess.userId);
 }
 function destroySession(req) {
   const cookie = req.headers.cookie || '';
@@ -727,8 +827,7 @@ Return ONLY raw valid JSON.`;
         if (password.length < 8) {
           return sendJson(res, 400, { success: false, error: 'Password must be at least 8 characters.' });
         }
-        const users = readUsers();
-        if (users.some(u => u.username === username || (email && u.email === email))) {
+        if (await userExists(username, email)) {
           return sendJson(res, 409, { success: false, error: 'An account with that username or email already exists.' });
         }
         const totpSecret = generateTotpSecret();
@@ -741,8 +840,7 @@ Return ONLY raw valid JSON.`;
           totpSecret,
           createdAt: Date.now()
         };
-        users.push(user);
-        writeUsers(users);
+        await insertUser(user);
         return sendJson(res, 201, {
           success: true,
           user: publicUser(user),
@@ -760,7 +858,7 @@ Return ONLY raw valid JSON.`;
         const username = (body.username || '').trim().toLowerCase();
         const password = body.password || '';
         const code = (body.code || body.totp || '').trim();
-        const user = readUsers().find(u => u.username === username || (u.email && u.email === username));
+        const user = await findUser(username);
         if (!user || !verifyPassword(password, user.passwordHash)) {
           rateHit('login:' + ip, 5 * 60 * 1000);
           const rl2 = ratePeek('login:' + ip, 5, 5 * 60 * 1000);
@@ -794,7 +892,7 @@ Return ONLY raw valid JSON.`;
       }
 
       if (pathname === '/api/auth/me' && req.method === 'GET') {
-        const user = getSessionUser(req);
+        const user = await getSessionUser(req);
         if (!user) return sendJson(res, 401, { success: false, error: 'Not authenticated' });
         return sendJson(res, 200, { success: true, user: publicUser(user) });
       }
@@ -810,8 +908,7 @@ Return ONLY raw valid JSON.`;
         const secretAnswer = (body.secretAnswer || '').trim().toLowerCase();
         const newPassword = body.newPassword || '';
         if (newPassword.length < 8) return sendJson(res, 400, { success: false, error: 'Password must be at least 8 characters.' });
-        const users = readUsers();
-        const user = users.find(u => u.username === username || (u.email && u.email === username));
+        const user = await findUser(username);
         if (!user || !verifyPassword(secretAnswer, user.secretAnswerHash)) {
           rateHit('recover:' + ip, 5 * 60 * 1000);
           const rl2 = ratePeek('recover:' + ip, 5, 5 * 60 * 1000);
@@ -821,9 +918,64 @@ Return ONLY raw valid JSON.`;
           return sendJson(res, 401, { success: false, error: 'Incorrect account or secret answer.' });
         }
         rateClear('recover:' + ip);
-        user.passwordHash = hashPassword(newPassword);
-        writeUsers(users);
+        await updateUserPassword(user.id, hashPassword(newPassword));
         return sendJson(res, 200, { success: true, message: 'Password has been reset. You can now log in.' });
+      }
+
+// --- FINANCE SYNC (per-user, Supabase) ---
+      if (pathname === '/api/finance/load' && req.method === 'GET') {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { success: false, error: 'Not authenticated' });
+        if (!USE_SUPABASE) return sendJson(res, 200, { success: true, data: null, offline: true });
+        const rows = await sbFetch(`finance_state?select=data&user_id=eq.${encodeURIComponent(user.id)}`);
+        return sendJson(res, 200, { success: true, data: Array.isArray(rows) && rows.length ? rows[0].data : null });
+      }
+
+      if (pathname === '/api/finance/save' && req.method === 'PUT') {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { success: false, error: 'Not authenticated' });
+        if (!USE_SUPABASE) return sendJson(res, 200, { success: true, offline: true });
+        const body = await readJsonBody(req);
+        if (!body || typeof body.data !== 'object') return sendJson(res, 400, { success: false, error: 'data object is required' });
+        await sbFetch('finance_state?on_conflict=user_id', {
+          method: 'POST',
+          headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ user_id: user.id, data: body.data, updated_at: new Date().toISOString() })
+        });
+        return sendJson(res, 200, { success: true, saved: true });
+      }
+
+      // --- FEEDBACK / COMPLAINTS ---
+      if (pathname === '/api/feedback' && req.method === 'POST') {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { success: false, error: 'Not authenticated' });
+        const body = await readJsonBody(req);
+        const message = String((body && body.message) || '').trim().slice(0, 2000);
+        if (!message) return sendJson(res, 400, { success: false, error: 'Message is required' });
+        if (!USE_SUPABASE) return sendJson(res, 200, { success: true, stored: false });
+        await sbFetch('feedback', {
+          method: 'POST',
+          headers: { 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ user_id: user.id, username: user.username, message })
+        });
+        return sendJson(res, 200, { success: true, stored: true });
+      }
+
+      // --- ADMIN (protected by admin token) ---
+      if (pathname === '/api/admin/data' && req.method === 'GET') {
+        if (!USE_SUPABASE) return sendJson(res, 503, { success: false, error: 'Supabase is not configured' });
+        const token = req.headers['x-admin-token'] || '';
+        const cfg = await sbFetch('admin_config?select=admin_token&id=eq.1');
+        const expected = (Array.isArray(cfg) && cfg.length) ? cfg[0].admin_token : (ADMIN_TOKEN || '');
+        if (!expected || token !== expected) return sendJson(res, 403, { success: false, error: 'Invalid admin token' });
+        const users = await sbFetch('app_users?select=name,username,email,created_at&order=created_at.desc');
+        const feedback = await sbFetch('feedback?select=username,message,created_at&order=created_at.desc');
+        return sendJson(res, 200, {
+          success: true,
+          count: Array.isArray(users) ? users.length : 0,
+          users: users || [],
+          feedback: feedback || []
+        });
       }
 
       return sendJson(res, 404, { success: false, error: 'API endpoint not found' });
@@ -840,9 +992,12 @@ Return ONLY raw valid JSON.`;
   }
 
   // Gate the main app behind authentication
-  if (reqPath === '/index.html' && !getSessionUser(req)) {
-    res.writeHead(302, { Location: '/login.html' });
-    return res.end();
+  if (reqPath === '/index.html') {
+    const sessionUser = await getSessionUser(req);
+    if (!sessionUser) {
+      res.writeHead(302, { Location: '/login.html' });
+      return res.end();
+    }
   }
 
   const safePath = path.normalize(reqPath).replace(/^(\.\.[\/\\])+/, '');

@@ -306,7 +306,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (authUser) SBS_USER = authUser.username;
 
+  // Pull cloud finance state (Supabase) before loading local cache.
+  if (authUser) {
+    await loadFinanceFromCloud();
+  }
   loadState();
+  _cloudReady = true;
   if (authUser) {
     appState.user.name = authUser.name || appState.user.name;
     appState.user.email = authUser.email || appState.user.email;
@@ -379,10 +384,26 @@ function saveSetup() {
 function openAbout() { openModal("modal-about"); }
 function sendFeedback() {
   const text = (document.getElementById("feedback-text").value || "").trim();
-  const subject = encodeURIComponent("SBS Feedback / Suggestion");
-  const body = encodeURIComponent(text || "I have a suggestion for Super Budgeting System.");
-  window.location.href = `mailto:your-email@example.com?subject=${subject}&body=${body}`;
-  showToast("Opening your email app...");
+  if (!text) { showToast("Please write your feedback first."); return; }
+  // Try to store feedback in the database (Supabase via server)
+  fetch("/api/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: text })
+  }).then(r => r.json()).then(j => {
+    if (j && j.success) {
+      showToast(j.stored === false ? "Thanks! (offline — feedback not stored)" : "Thanks! Your feedback was sent to the developer.");
+      document.getElementById("feedback-text").value = "";
+    } else {
+      showToast((j && j.error) || "Could not send feedback.");
+    }
+  }).catch(() => {
+    // Fallback: open email app
+    const subject = encodeURIComponent("SBS Feedback / Suggestion");
+    const body = encodeURIComponent(text);
+    window.location.href = `mailto:your-email@example.com?subject=${subject}&body=${body}`;
+    showToast("Opening your email app...");
+  });
 }
 function replayTour() {
   closeModal("modal-about");
@@ -592,8 +613,48 @@ function loadState() {
 // ===== end loadState (L391) =====
 
 // ===== saveState (L395-L397) =====
+let _cloudReady = false;
+let _cloudSaveTimer = null;
 function saveState() {
   localStorage.setItem(stateKey(), JSON.stringify(appState));
+  if (_cloudReady && SBS_USER && typeof fetch === "function") {
+    clearTimeout(_cloudSaveTimer);
+    _cloudSaveTimer = setTimeout(() => {
+      fetch("/api/finance/save", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: appState })
+      }).catch(() => {});
+    }, 800);
+  }
+}
+
+// Load finance state from Supabase (via server); seed cloud from local if empty.
+async function loadFinanceFromCloud() {
+  if (!SBS_USER || typeof fetch !== "function") return false;
+  try {
+    const res = await fetch("/api/finance/load");
+    if (!res.ok) return false;
+    const j = await res.json();
+    if (j && j.success && j.data && typeof j.data === "object") {
+      localStorage.setItem(stateKey(), JSON.stringify(j.data));
+      return true;
+    }
+    // No cloud data yet — if local data exists, upload it once.
+    const local = localStorage.getItem(stateKey());
+    if (local) {
+      try {
+        await fetch("/api/finance/save", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: JSON.parse(local) })
+        });
+      } catch (e) {}
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
 }
 // ===== end saveState (L397) =====
 
