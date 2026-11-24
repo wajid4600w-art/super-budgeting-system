@@ -520,11 +520,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (authUser) SBS_USER = authUser.email || authUser.name;
 
-  // Pull cloud finance state (Firestore) before loading local cache.
-  if (authUser) {
-    await loadFinanceFromCloud();
-  }
+  // Load local state immediately (never block init on the network).
   try { loadState(); } catch (e) { console.warn("loadState failed:", e); appState = createEmptyState(); }
+  _cloudReady = true;
   if (authUser) {
     appState.user.name = authUser.name || appState.user.name;
     appState.user.email = authUser.email || appState.user.email;
@@ -537,6 +535,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!appState.user.setupComplete) {
       setTimeout(openSetup, 350);
     }
+    // Sync cloud in the background; re-render if cloud data arrives.
+    loadFinanceFromCloud().then((loaded) => {
+      if (loaded) {
+        try { loadState(); } catch (e) {}
+        try { renderDashboard(); } catch (e) {}
+        try { renderNotifications(); } catch (e) {}
+        if (typeof lucide !== "undefined") lucide.createIcons();
+      }
+    }).catch(() => {});
   }
   const safe = (fn) => { try { fn(); } catch (e) { console.warn("init step failed:", e && e.message); } };
   safe(initTheme);
@@ -840,7 +847,11 @@ function saveState() {
 async function loadFinanceFromCloud() {
   if (!window.db || !window.SBS_UID) return false;
   try {
-    const snap = await window.db.collection("finance_state").doc(window.SBS_UID).get();
+    const get = window.db.collection("finance_state").doc(window.SBS_UID).get();
+    const snap = await Promise.race([
+      get,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("cloud timeout")), 4000))
+    ]);
     if (snap.exists && snap.data() && snap.data().data && typeof snap.data().data === "object") {
       localStorage.setItem(stateKey(), JSON.stringify(snap.data().data));
       return true;
