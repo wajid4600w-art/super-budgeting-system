@@ -2083,6 +2083,14 @@
           <input type="password" id="pref-gemini-key" placeholder="For direct mobile smart capture" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
           <p class="text-[11px] text-slate-400 mt-1">For standalone mobile use. Local server configuration is recommended for privacy.</p>
         </div>
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+          <p class="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Account Security</p>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="changeAccountPassword()" class="text-xs px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold hover:bg-slate-200 dark:hover:bg-slate-700">Change Password</button>
+            <button onclick="resetAuthenticator()" class="text-xs px-3 py-2 rounded-lg bg-lavender-50 dark:bg-lavender-600/20 text-lavender-700 dark:text-lavender-300 font-semibold hover:bg-lavender-100">Reset Authenticator (2FA)</button>
+          </div>
+          <p class="text-[11px] text-slate-400">Changing your password or resetting 2FA may require you to sign in again.</p>
+        </div>
         <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div class="flex items-center space-x-3">
             <button onclick="exportLocalData()" class="text-xs text-brand-600 hover:underline">Export My Data</button>
@@ -2471,6 +2479,6 @@
   </script>
 
   <!-- Application Logic JavaScript (Cache-Busted for Mobile Updates) -->
-  <script src="app.js?v=3.0.9"></script>
+  <script src="app.js?v=3.0.10"></script>
 </body>
 </html>

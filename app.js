@@ -2384,7 +2384,7 @@ async function handleReceiptUpload(e) {
     // 3. Stage 1: Multimodal OCR Text Extraction via Direct Gemini API
     const activeKey = getActiveGeminiKey();
     if (activeKey) {
-      const visionModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+      const visionModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
       const ocrPrompt = "Perform OCR on this receipt image. Read and transcribe every single line of printed text, store name, date, invoice numbers, line items with prices, tax/VAT, subtotal, and grand total verbatim. Return only the plain transcribed text.";
 
       for (const model of visionModels) {
@@ -2464,7 +2464,7 @@ ${rawOcrText}
 
 Return ONLY raw valid JSON.`;
 
-      const parseModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash'];
+      const parseModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
       for (const model of parseModels) {
         try {
           const pRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`, {
@@ -3227,7 +3227,7 @@ Extract transaction details into JSON matching this exact schema:
 // ===== end parseVoicePhrase (L2604) =====
 Return ONLY valid raw JSON.`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${activeKey}`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${activeKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3438,7 +3438,7 @@ ${JSON.stringify({
   categories: catSummaries
 })}`;
 
-        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${activeKey}`, {
+        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${activeKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3961,7 +3961,9 @@ window.addEventListener("paste", (e) => {
   const dataInputActive = dataInput && !dataInput.classList.contains("hidden");
   const ocrModal = document.getElementById("modal-ocr");
   const ocrActive = ocrModal && !ocrModal.classList.contains("hidden");
-  if (!dataInputActive && !ocrActive) return;
+  const choiceModal = document.getElementById("modal-add-choice");
+  const choiceActive = choiceModal && !choiceModal.classList.contains("hidden");
+  if (!dataInputActive && !ocrActive && !choiceActive) return;
 
   const items = e.clipboardData?.items;
   if (!items) return;
@@ -3970,7 +3972,10 @@ window.addEventListener("paste", (e) => {
       const file = item.getAsFile();
       if (file) {
         e.preventDefault();
-        if (!ocrActive) openOcrModal();
+        if (!ocrActive) {
+          if (choiceActive) choiceModal.classList.add("hidden");
+          openOcrModal();
+        }
         handleReceiptUpload({ file });
         showToast("Pasted image captured for OCR!");
         break;
@@ -4068,6 +4073,33 @@ function savePreferences() {
   }
 }
 // ===== end savePreferences (L3408) =====
+
+// ===== changeAccountPassword (L?) =====
+async function changeAccountPassword() {
+  if (!window.auth || !window.auth.currentUser) { showToast("Not signed in."); return; }
+  const pw = prompt("Enter a new password (min 8 chars):");
+  if (!pw) return;
+  if (pw.length < 8) { showToast("Password must be at least 8 characters."); return; }
+  try {
+    await window.auth.currentUser.updatePassword(pw);
+    showToast("Password updated successfully.");
+  } catch (e) {
+    showToast(e.message || "Could not change password. Please sign in again.");
+  }
+}
+
+// ===== resetAuthenticator (L?) =====
+async function resetAuthenticator() {
+  if (!window.auth || !window.auth.currentUser || !window.db) { showToast("Not available offline."); return; }
+  if (!confirm("Reset your authenticator (2FA)? You'll scan a new QR on your next login.")) return;
+  try {
+    await window.db.collection("users").doc(window.auth.currentUser.uid).set({ totpSecret: "" }, { merge: true });
+    try { localStorage.removeItem("sbs_2fa"); sessionStorage.removeItem("sbs_2fa"); } catch (e) {}
+    showToast("Authenticator reset. Set it up again on next login.");
+  } catch (e) {
+    showToast(e.message || "Could not reset authenticator.");
+  }
+}
 
 // --- THEME UTILITIES ---
 // ===== initTheme (L3413-L3421) =====
