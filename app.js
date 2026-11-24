@@ -469,26 +469,32 @@ let mediaRecorderStartedAt = 0;
 let voiceParsedDate = "";
 let voiceParsedType = "expense";
 
+// Wait until Firebase restores the auth state (or a short timeout).
+function waitForAuth() {
+  return new Promise((resolve) => {
+    if (!window.auth) return resolve(null);
+    if (window.auth.currentUser) return resolve(window.auth.currentUser);
+    let done = false;
+    const finish = (u) => { if (done) return; done = true; try { unsub(); } catch (e) {} resolve(u); };
+    const unsub = window.auth.onAuthStateChanged((u) => finish(u));
+    setTimeout(() => finish(window.auth.currentUser), 5000);
+  });
+}
+
 // Initialize Application
 document.addEventListener("DOMContentLoaded", async () => {
-  // Gate: verify Firebase auth session
+  // Gate: verify Firebase auth session (robust wait — authStateReady is unreliable in compat)
   let authUser = null;
   if (window.auth) {
-    try {
-      await window.auth.authStateReady();
-      const u = window.auth.currentUser;
-      if (u) {
-        window.SBS_UID = u.uid;
-        authUser = {
-          uid: u.uid,
-          name: u.displayName || (u.email ? u.email.split("@")[0] : "User"),
-          email: u.email || ""
-        };
-      } else {
-        location.href = "login.html";
-        return;
-      }
-    } catch (e) {
+    const u = await waitForAuth();
+    if (u) {
+      window.SBS_UID = u.uid;
+      authUser = {
+        uid: u.uid,
+        name: u.displayName || (u.email ? u.email.split("@")[0] : "User"),
+        email: u.email || ""
+      };
+    } else {
       location.href = "login.html";
       return;
     }
