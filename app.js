@@ -522,16 +522,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       setTimeout(openSetup, 350);
     }
   }
-  initTheme();
-  initCurrencyExchange();
-  initCategoriesDropdowns();
-  initSidebar();
-  renderDashboard();
-  renderNotifications();
-  initHeroBubbles();
-  setupSpeechRecognition();
-  checkAiStatus();
-  lucide.createIcons();
+  const safe = (fn) => { try { fn(); } catch (e) { console.warn("init step failed:", e && e.message); } };
+  safe(initTheme);
+  safe(initCurrencyExchange);
+  safe(initCategoriesDropdowns);
+  safe(initSidebar);
+  safe(renderDashboard);
+  safe(renderNotifications);
+  safe(initHeroBubbles);
+  safe(setupSpeechRecognition);
+  safe(checkAiStatus);
+  safe(() => { if (typeof lucide !== "undefined") lucide.createIcons(); });
 });
 
 // ===== logout (L?) =====
@@ -3270,6 +3271,24 @@ function confirmVoiceTransaction() {
 // ===== end confirmVoiceTransaction (L2696) =====
 
 // --- AI FINANCIAL ADVISOR & SPENDING AUDIT ---
+// Reset the AI card to a neutral empty state (no fabricated score).
+function renderAiEmpty(status, message) {
+  const scoreEl = document.getElementById("ai-health-score");
+  const statusEl = document.getElementById("ai-health-status");
+  const ringEl = document.getElementById("ai-score-ring");
+  const summaryEl = document.getElementById("ai-executive-summary");
+  const insights = document.getElementById("ai-key-insights-list");
+  const recs = document.getElementById("ai-recommendations-list");
+  const alerts = document.getElementById("ai-budget-alerts-list");
+  if (scoreEl) { scoreEl.innerText = "—"; scoreEl.className = "text-2xl font-black text-slate-400"; }
+  if (statusEl) { statusEl.innerText = status; statusEl.className = "mt-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500"; }
+  if (ringEl) ringEl.className = "w-20 h-20 rounded-full border-4 border-slate-200 flex items-center justify-center bg-slate-50";
+  if (summaryEl) summaryEl.innerText = message;
+  if (insights) insights.innerHTML = "";
+  if (recs) recs.innerHTML = "";
+  if (alerts) alerts.innerHTML = "";
+}
+
 // ===== generateAiAdvisorAudit (L2701-L2780) =====
 async function generateAiAdvisorAudit() {
   const btn = document.getElementById("btn-run-ai-audit");
@@ -3302,6 +3321,13 @@ async function generateAiAdvisorAudit() {
       spent: categorySpending[c.id] || 0,
       budget: c.budget || 0
     }));
+
+  // No data → show a proper empty state instead of a fabricated score.
+  if (!appState.transactions.length) {
+    if (btn) { btn.disabled = false; if (btnText) btnText.innerText = origText; }
+    renderAiEmpty("No data yet", "Add income or expenses, then run the audit to get AI-powered insights.");
+    return;
+  }
 
   const isLocalServer = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.port === "3000");
   let audit = null;
@@ -3342,10 +3368,11 @@ async function generateAiAdvisorAudit() {
     if (activeKey) {
       try {
         const systemPrompt = `You are an elite AI Personal Financial Advisor for Super Budgeting System.
-Analyze this financial summary and return ONLY valid JSON matching this schema:
+Analyze this financial summary and return ONLY valid JSON matching this schema
+(replace the example values with real computed numbers — do NOT echo the examples):
 {
-  "healthScore": 85,
-  "healthStatus": "Excellent",
+  "healthScore": <integer 0-100 computed from the data>,
+  "healthStatus": "Excellent" | "Good" | "Fair" | "Needs Attention",
   "executiveSummary": "2 crisp sentences on status and priority.",
   "keyInsights": ["Specific observation 1", "Specific observation 2"],
   "recommendations": ["Actionable step 1", "Actionable step 2"],
@@ -3410,8 +3437,8 @@ ${JSON.stringify({
     const statusEl = document.getElementById("ai-health-status");
     const ringEl = document.getElementById("ai-score-ring");
 
-    const score = audit.healthScore || 85;
-    if (scoreEl) scoreEl.innerText = score;
+    const score = (audit.healthScore != null) ? Number(audit.healthScore) : 0;
+    if (scoreEl) scoreEl.innerText = score > 0 ? score : "—";
     if (statusEl) statusEl.innerText = audit.healthStatus || "Good";
 
     if (ringEl) {
