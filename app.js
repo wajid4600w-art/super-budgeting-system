@@ -469,14 +469,16 @@ let mediaRecorderStartedAt = 0;
 let voiceParsedDate = "";
 let voiceParsedType = "expense";
 
-// Wait until Firebase restores the auth state (or a short timeout).
+// Wait until Firebase restores the auth state (ignore the initial null event).
 function waitForAuth() {
   return new Promise((resolve) => {
     if (!window.auth) return resolve(null);
     if (window.auth.currentUser) return resolve(window.auth.currentUser);
     let done = false;
     const finish = (u) => { if (done) return; done = true; try { unsub(); } catch (e) {} resolve(u); };
-    const unsub = window.auth.onAuthStateChanged((u) => finish(u));
+    const unsub = window.auth.onAuthStateChanged((u) => {
+      if (u) finish(u); // only resolve on a real user, ignore the initial null
+    });
     setTimeout(() => finish(window.auth.currentUser), 5000);
   });
 }
