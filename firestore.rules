@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Each user can read/write only their own finance state.
+    match /finance_state/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    // Any signed-in user can submit feedback; only the console/admin can read.
+    match /feedback/{id} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false;
+    }
+  }
+}

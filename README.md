@@ -43,6 +43,7 @@ Your data is stored locally in your browser (`localStorage`), so it works instan
 - **AI control** — enable/disable analysis; output is always advisory
 
 ### Experience
+- **Google Sign-In** (Firebase Auth) + secure per-user cloud storage (Firestore) for finance & feedback
 - **Green/pastel + obsidian** responsive design (lime, indigo, cobalt, coral accents)
 - **Dark & light themes** with a collapsible **hover-to-expand sidebar** (with pin)
 - **Multi-account** switching (localStorage-backed)
@@ -57,16 +58,14 @@ Your data is stored locally in your browser (`localStorage`), so it works instan
 
 ## 🔐 Authentication
 
-The app ships with a built-in, zero-dependency authentication system (Node `crypto`):
+Authentication is handled by **Firebase Authentication** (works on static GitHub Pages):
 
-- **Create account** — full name, username/email, password, a **secret question**, and automatic **TOTP** (authenticator app) setup shown as a secret key + `otpauth://` link.
-- **Login** — password + **6-digit authenticator code** (TOTP / RFC 6238, 30s window).
-- **Account recovery** — reset your password using your **secret question** answer.
-- **Security** — passwords hashed with **scrypt** (per-user salt), TOTP verified with a ±1 step window, **HttpOnly** signed session cookies, and **rate limiting** on login/recovery.
-- **Per-user data** — each account's financial data is stored separately in the browser (namespaced by username).
+- **Sign in with Google** (one click) or **email + password**.
+- **Per-user data** — each account's finance is stored in Firestore at `finance_state/{uid}`, isolated by security rules (only that user can read/write).
+- **Feedback** — users submit comments/reviews to the `feedback` collection; viewable in the Firebase Console.
 - **Sign out** — logout button in the sidebar footer.
 
-User accounts and sessions are stored server-side in `data/` (git-ignored). When you open the app unauthenticated, you're redirected to `login.html`.
+Unauthenticated users are redirected to `login.html`. See [`FIREBASE_SETUP.md`](FIREBASE_SETUP.md) for setup.
 
 ---
 
@@ -118,44 +117,20 @@ Open **http://localhost:3000** in your browser.
 
 Create a `.env` file in the project root (see `.env.example`):
 
-```env
-PORT=3000
-GEMINI_API_KEY=your_gemini_key
-OPENROUTER_API_KEY=your_openrouter_key
+### Authentication & database (Firebase — works on GitHub Pages)
+> Full step-by-step setup is in **[`FIREBASE_SETUP.md`](FIREBASE_SETUP.md)**.
 
-# Optional: Supabase cloud database (users, finance, feedback) + /admin
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-ADMIN_TOKEN=change_me_admin_token
-```
+The static build uses **Firebase Authentication** (Google Sign-In + email/password) and
+**Cloud Firestore** for per-user finance + feedback — no server required, so it runs on
+**GitHub Pages**. Configure `firebase-config.js` (public, safe) and publish `firestore.rules`.
 
-### Cloud database (optional, Supabase free tier)
-> Full step-by-step setup (project creation, SQL, env vars, deploy, admin) is in **[`SUPABASE_SETUP.md`](SUPABASE_SETUP.md)**.
+- Each user's finance is stored at `finance_state/{uid}` (only that user can read/write).
+- Feedback is stored in `feedback` (users can create; viewable in the Firebase Console).
+- View users & feedback in **Firebase Console → Firestore / Authentication**.
 
-When `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set, the server stores **users, per-user finance state, and feedback** in Supabase Postgres instead of local files. Create these tables once in the Supabase SQL editor:
-
-```sql
-create table if not exists app_users (
-  id text primary key, name text not null, username text unique not null,
-  email text, password_hash text not null, secret_question text,
-  secret_answer_hash text, totp_secret text, created_at timestamptz default now());
-create table if not exists finance_state (
-  user_id text primary key references app_users(id) on delete cascade,
-  data jsonb not null, updated_at timestamptz default now());
-create table if not exists feedback (
-  id uuid primary key default gen_random_uuid(),
-  user_id text references app_users(id) on delete set null,
-  username text, message text not null, created_at timestamptz default now());
-create table if not exists admin_config (id int primary key default 1, admin_token text not null);
-insert into admin_config (id, admin_token) values (1, 'change_me_admin_token') on conflict (id) do nothing;
-alter table app_users enable row level security;
-alter table finance_state enable row level security;
-alter table feedback enable row level security;
-alter table admin_config enable row level security;
--- No anon policies: only the server's service role can read/write.
-```
-
-Then open **`/admin.html`**, enter the admin token, and you'll see total users (name, username, email, joined) and all feedback (who, when, message).
+### Optional local Node server (AI endpoints)
+When running `server.js` locally, these endpoints are available (not used on GitHub Pages;
+AI falls back to direct in-browser Gemini on static hosting):
 
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
@@ -165,11 +140,8 @@ Then open **`/admin.html`**, enter the admin token, and you'll see total users (
 | `/api/ai/voice-parse` | POST | Parse spoken/typed phrases |
 | `/api/ai/voice-audio` | POST | Transcribe audio + parse transaction |
 | `/api/ai/advisor` | POST | Financial wellness analysis & recommendations |
-| `/api/finance/load` · `/api/finance/save` | GET · PUT | Load/save per-user finance state (Supabase) |
-| `/api/feedback` | POST | Store user feedback/complaints |
-| `/api/admin/data` | GET | Admin-only: users + feedback (requires `x-admin-token`) |
 
-> **Security:** never commit secrets. `.env` is git-ignored. Keys set in the browser/localStorage are visible to users on static hosts — prefer server-side environment variables for public deployments.
+> **Security:** never commit secrets. Firebase config is public and protected by Firestore rules. For the optional Node server, `.env` is git-ignored.
 
 ---
 
@@ -180,7 +152,7 @@ Then open **`/admin.html`**, enter the admin token, and you'll see total users (
 3. **Dictate** — use **Voice** to speak a phrase or record/upload audio.
 4. **Set budgets** — open **Budgets & Limits** to edit the global ceiling and each category limit (with a proper edit popup and a ✕ to delete categories).
 5. **Reports** — open **Financial Reports** to view/print/save a statement, or export CSV/JSON.
-6. **Account** — sign in / out from the sidebar footer; each account's finance data is stored separately (and synced to Supabase when configured).
+6. **Account** — sign in with **Google** (or email/password); each account's finance is stored per-user in Firestore.
 
 ---
 
@@ -189,15 +161,15 @@ Then open **`/admin.html`**, enter the admin token, and you'll see total users (
 ```text
 super-budgeting-system/
 ├── index.html            # Main web interface (markup, Tailwind config, CSS)
-├── login.html            # Login / register (with TOTP) / recover page
-├── admin.html            # Protected developer view (users + feedback)
+├── login.html            # Firebase login (Google + email/password)
+├── firebase-config.js    # Public Firebase config (safe)
+├── firestore.rules       # Per-user security rules (publish in Firebase)
 ├── app.js                # Application state, rendering & client logic
-├── server.js             # Node HTTP server + auth + AI API endpoints
+├── server.js             # Optional local Node server (AI endpoints; not needed on Pages)
 ├── package.json          # Node start configuration
 ├── run_app.bat           # Windows local launcher
-├── .env.example          # Environment variable template
-├── SUPABASE_SETUP.md     # Full Supabase configuration guide (SQL + steps)
-├── data/                 # (git-ignored) user accounts & sessions
+├── FIREBASE_SETUP.md     # Full Firebase + GitHub Pages setup guide
+├── .env.example          # (optional) local Node server env template
 ├── PROJECT_PROPOSAL.md   # Requirements / proposal
 ├── PROJECT_PROPOSAL.html # Rendered proposal
 └── README.md

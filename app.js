@@ -471,23 +471,35 @@ let voiceParsedType = "expense";
 
 // Initialize Application
 document.addEventListener("DOMContentLoaded", async () => {
-  // Gate: verify session with the server (skip gracefully when opened as a static file)
+  // Gate: verify Firebase auth session
   let authUser = null;
-  try {
-    const res = await fetch('/api/auth/me');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.user) authUser = data.user;
-    } else if (res.status === 401) {
-      location.href = '/login.html';
+  if (window.auth) {
+    try {
+      await window.auth.authStateReady();
+      const u = window.auth.currentUser;
+      if (u) {
+        window.SBS_UID = u.uid;
+        authUser = {
+          uid: u.uid,
+          name: u.displayName || (u.email ? u.email.split("@")[0] : "User"),
+          email: u.email || ""
+        };
+      } else {
+        location.href = "login.html";
+        return;
+      }
+    } catch (e) {
+      location.href = "login.html";
       return;
     }
-  } catch (e) {
-    // Offline / static hosting — continue in local demo mode
   }
 
-  if (authUser) SBS_USER = authUser.username;
+  if (authUser) SBS_USER = authUser.email || authUser.name;
 
+  // Pull cloud finance state (Firestore) before loading local cache.
+  if (authUser) {
+    await loadFinanceFromCloud();
+  }
   loadState();
   if (authUser) {
     appState.user.name = authUser.name || appState.user.name;
@@ -516,8 +528,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 // ===== logout (L?) =====
 async function logout() {
-  try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
-  location.href = '/login.html';
+  try { if (window.auth) await window.auth.signOut(); } catch (e) {}
+  location.href = "login.html";
 }
 
 // --- FIRST-TIME SETUP ---
@@ -562,10 +574,22 @@ function saveSetup() {
 function openAbout() { openModal("modal-about"); }
 function sendFeedback() {
   const text = (document.getElementById("feedback-text").value || "").trim();
-  const subject = encodeURIComponent("SBS Feedback / Suggestion");
-  const body = encodeURIComponent(text || "I have a suggestion for Super Budgeting System.");
-  window.location.href = `mailto:your-email@example.com?subject=${subject}&body=${body}`;
-  showToast("Opening your email app...");
+  if (!text) { showToast("Please write your feedback first."); return; }
+  if (window.db) {
+    window.db.collection("feedback").add({
+      user_id: window.SBS_UID || null,
+      username: SBS_USER || "",
+      message: text,
+      created_at: firebase.firestore.FieldValue.serverTimestamp()
+    }).then(() => {
+      showToast("Thanks! Your feedback was sent to the developer.");
+      document.getElementById("feedback-text").value = "";
+    }).catch(() => {
+      showToast("Could not send feedback. Please try again.");
+    });
+  } else {
+    showToast("Feedback storage is not configured.");
+  }
 }
 function replayTour() {
   closeModal("modal-about");
@@ -777,6 +801,37 @@ function loadState() {
 // ===== saveState (L395-L397) =====
 function saveState() {
   localStorage.setItem(stateKey(), JSON.stringify(appState));
+  if (_cloudReady && window.db && window.SBS_UID) {
+    clearTimeout(_cloudSaveTimer);
+    _cloudSaveTimer = setTimeout(() => {
+      window.db.collection("finance_state").doc(window.SBS_UID)
+        .set({ data: appState, updated_at: firebase.firestore.FieldValue.serverTimestamp() })
+        .catch(() => {});
+    }, 800);
+  }
+}
+
+// Load finance state from Firestore; seed cloud from local if empty.
+async function loadFinanceFromCloud() {
+  if (!window.db || !window.SBS_UID) return false;
+  try {
+    const snap = await window.db.collection("finance_state").doc(window.SBS_UID).get();
+    if (snap.exists && snap.data() && snap.data().data && typeof snap.data().data === "object") {
+      localStorage.setItem(stateKey(), JSON.stringify(snap.data().data));
+      return true;
+    }
+    // No cloud data yet — if local data exists, upload it once.
+    const local = localStorage.getItem(stateKey());
+    if (local) {
+      try {
+        await window.db.collection("finance_state").doc(window.SBS_UID)
+          .set({ data: JSON.parse(local), updated_at: firebase.firestore.FieldValue.serverTimestamp() });
+      } catch (e) {}
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
 }
 // ===== end saveState (L397) =====
 
