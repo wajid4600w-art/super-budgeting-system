@@ -10,11 +10,11 @@
 | **Course** | Software Engineering / Capstone Project |
 | **Project Name** | Super Budgeting System (SBS) |
 | **Project Type** | Web-Based Personal Financial Management System |
-| **Instructor / Lecturer** | ____________________ |
-| **Team Members** | ____________________ |
-| **Student IDs** | ____________________ |
-| **Section / Group** | ____________________ |
-| **Submission Date** | 17 September 2027 |
+| **Instructor / Lecturer** | Dr. Muhammed Al-Hadad |
+| **Team Members** | Wajed Ali, Abdullah Nooh, Anwar Orfali |
+| **Student IDs** | 2440471, 2437083, 2343191 |
+| **Section / Group** | IT2 |
+| **Submission Date** | 25 November 2026 |
 
 ---
 

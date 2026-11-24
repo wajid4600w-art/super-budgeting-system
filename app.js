@@ -227,52 +227,234 @@ Status: Validated & Logged in SAR
   ]
 };
 
-// --- CURRENCY CONVERSION RATES & PEGS (Base: SAR) ---
-const CURRENCY_RATES = {
-  SAR: 1.0,
-  USD: 1 / 3.75, // Exact official peg: 1 USD = 3.75 SAR (0.2666667)
-  EUR: 0.2450,   // 1 EUR = ~4.0816 SAR
-  GBP: 0.2100,   // 1 GBP = ~4.7619 SAR
-  AED: 0.9800    // 1 AED = ~1.0204 SAR
+// --- CURRENCY: LIVE EXCHANGE RATES (Base: SAR) ---
+// Rates are stored as "units of currency per 1 SAR". They start from the built-in
+// fallback table, are replaced by the last cached live copy, and are then refreshed
+// from the server (/api/rates -> open.er-api.com) on load and every few hours.
+const CURRENCY_META = [
+  { code: "SAR", name: "Saudi Riyal",        symbol: "ر.س" },
+  { code: "USD", name: "US Dollar",          symbol: "$" },
+  { code: "EUR", name: "Euro",               symbol: "€" },
+  { code: "GBP", name: "British Pound",      symbol: "£" },
+  { code: "AED", name: "UAE Dirham",         symbol: "د.إ" },
+  { code: "KWD", name: "Kuwaiti Dinar",      symbol: "د.ك" },
+  { code: "QAR", name: "Qatari Riyal",       symbol: "ر.ق" },
+  { code: "BHD", name: "Bahraini Dinar",     symbol: ".د.ب" },
+  { code: "OMR", name: "Omani Rial",         symbol: "ر.ع" },
+  { code: "JOD", name: "Jordanian Dinar",    symbol: "د.أ" },
+  { code: "EGP", name: "Egyptian Pound",     symbol: "E£" },
+  { code: "TRY", name: "Turkish Lira",       symbol: "₺" },
+  { code: "INR", name: "Indian Rupee",       symbol: "₹" },
+  { code: "PKR", name: "Pakistani Rupee",    symbol: "₨" },
+  { code: "CNY", name: "Chinese Yuan",       symbol: "¥" },
+  { code: "JPY", name: "Japanese Yen",       symbol: "¥" },
+  { code: "KRW", name: "South Korean Won",   symbol: "₩" },
+  { code: "CAD", name: "Canadian Dollar",    symbol: "C$" },
+  { code: "AUD", name: "Australian Dollar",  symbol: "A$" },
+  { code: "CHF", name: "Swiss Franc",        symbol: "CHF" },
+  { code: "SGD", name: "Singapore Dollar",   symbol: "S$" },
+  { code: "MYR", name: "Malaysian Ringgit",  symbol: "RM" },
+  { code: "IDR", name: "Indonesian Rupiah",  symbol: "Rp" }
+];
+
+// Rough offline estimates (per 1 SAR) used only until live rates are available.
+const FALLBACK_RATES = {
+  SAR: 1.0, USD: 1 / 3.75, EUR: 0.2450, GBP: 0.2100, AED: 0.9793,
+  KWD: 0.0818, QAR: 0.9707, BHD: 0.1003, OMR: 0.1025, JOD: 0.1890,
+  EGP: 13.0, TRY: 11.5, INR: 23.5, PKR: 74.5, CNY: 1.90, JPY: 40.0,
+  KRW: 380.0, CAD: 0.370, AUD: 0.410, CHF: 0.215, SGD: 0.350,
+  MYR: 1.13, IDR: 4350.0
 };
 
-const CURRENCY_SYMBOLS = {
-  SAR: "SAR (ر.س)",
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  AED: "AED"
-};
+const CURRENCY_RATES = Object.assign({}, FALLBACK_RATES);
+const CURRENCY_SYMBOLS = {};
+CURRENCY_META.forEach(c => { CURRENCY_SYMBOLS[c.code] = c.symbol; });
+
+const FX_CACHE_KEY = "sbs_fx_rates_v1";
+const FX_REFRESH_MS = 3 * 60 * 60 * 1000; // 3 hours
+let FX_INFO = { source: "fallback", updated: null, stale: true };
+
+// SAR is officially pegged to USD at 3.75, so we always honour the peg.
+function applyRates(rates) {
+  if (!rates) return;
+  Object.keys(rates).forEach(code => {
+    const v = Number(rates[code]);
+    if (v > 0 && isFinite(v)) CURRENCY_RATES[code.toUpperCase()] = v;
+  });
+  CURRENCY_RATES.SAR = 1.0;
+  CURRENCY_RATES.USD = 1 / 3.75;
+}
+
+function loadCachedRates() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FX_CACHE_KEY) || "null");
+    if (raw && raw.rates) {
+      applyRates(raw.rates);
+      FX_INFO = { source: "cached", updated: raw.updated || null, stale: true };
+    }
+  } catch (e) { /* ignore corrupt cache */ }
+}
+
+async function refreshRates(manual = false) {
+  const btn = document.getElementById("fx-refresh-btn");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/rates");
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || "Rates unavailable");
+    applyRates(data.rates);
+    FX_INFO = { source: "live", updated: data.updated, stale: !!data.stale };
+    try { localStorage.setItem(FX_CACHE_KEY, JSON.stringify({ rates: data.rates, updated: data.updated })); } catch (e) {}
+    rerenderAfterRatesChange();
+    if (manual) showToast("Exchange rates updated.");
+  } catch (e) {
+    if (manual) showToast("Couldn't fetch live rates — using " + (FX_INFO.source === "fallback" ? "built-in estimates." : "last saved rates."));
+    renderCurrencyView();
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function rerenderAfterRatesChange() {
+  try {
+    if (typeof renderDashboard === "function") renderDashboard();
+    if (typeof renderBudgets === "function") renderBudgets();
+    if (typeof renderTransactionsTable === "function") renderTransactionsTable();
+    if (typeof renderSavings === "function") renderSavings();
+    if (typeof renderReports === "function") renderReports();
+  } catch (e) { /* views may not be mounted yet */ }
+  renderCurrencyView();
+  if (typeof updateTxConversionPreview === "function") updateTxConversionPreview();
+}
+
+// Fill every currency <select> with the full list (keeps the current value).
+function populateCurrencySelects() {
+  const ids = ["pref-currency", "setup-currency", "ocr-res-currency", "fx-from", "fx-to", "tx-currency"];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const prev = el.value;
+    el.innerHTML = CURRENCY_META.map(c => `<option value="${c.code}">${c.code} — ${c.name} (${c.symbol})</option>`).join("");
+    if (prev && CURRENCY_RATES[prev]) el.value = prev;
+  });
+}
+
+function initCurrencyExchange() {
+  loadCachedRates();
+  populateCurrencySelects();
+  const user = (appState && appState.user) || {};
+  const home = (user.currency || "SAR").toUpperCase();
+  const from = document.getElementById("fx-from");
+  const to = document.getElementById("fx-to");
+  if (from) from.value = home === "USD" ? "SAR" : "USD";
+  if (to) to.value = home === "USD" ? "USD" : home;
+  runConverter();
+  refreshRates(false);
+  setInterval(() => refreshRates(false), FX_REFRESH_MS);
+}
 
 // Direct conversion helper functions
-// ===== getExchangeRateToSAR (L249-L256) =====
+// ===== getExchangeRateToSAR =====
 function getExchangeRateToSAR(currency) {
-  if (currency === "SAR") return 1.0;
-  if (currency === "USD") return 3.75;
-  if (currency === "EUR") return 4.0816;
-  if (currency === "GBP") return 4.7619;
-  if (currency === "AED") return 1.0204;
-  return 1.0;
+  const c = (currency || "SAR").toUpperCase();
+  if (c === "SAR") return 1.0;
+  if (c === "USD") return 3.75; // official peg
+  const perSar = CURRENCY_RATES[c];
+  return perSar ? 1 / perSar : 1.0;
 }
-// ===== end getExchangeRateToSAR (L256) =====
+// ===== end getExchangeRateToSAR =====
 
-// ===== convertToSAR (L260-L265) =====
+// ===== convertToSAR =====
 function convertToSAR(amount, fromCurrency) {
   if (!amount) return 0;
   const curr = (fromCurrency || "SAR").toUpperCase();
   if (curr === "SAR") return amount;
   return amount * getExchangeRateToSAR(curr);
 }
-// ===== end convertToSAR (L265) =====
+// ===== end convertToSAR =====
 
-// ===== convertFromSAR (L269-L274) =====
+// ===== convertFromSAR =====
 function convertFromSAR(amountInSAR, toCurrency) {
   if (!amountInSAR) return 0;
   const curr = (toCurrency || "SAR").toUpperCase();
   if (curr === "SAR") return amountInSAR;
   return amountInSAR / getExchangeRateToSAR(curr);
 }
-// ===== end convertFromSAR (L274) =====
+// ===== end convertFromSAR =====
+
+// Convert between any two supported currencies.
+function convertCurrency(amount, from, to) {
+  return convertFromSAR(convertToSAR(amount, from), to);
+}
+
+function fmtCurrency(value, code) {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: code, currencyDisplay: "code" }).format(value);
+  } catch (e) {
+    return `${value.toFixed(2)} ${code}`;
+  }
+}
+
+function fxStatusText() {
+  const when = FX_INFO.updated ? new Date(FX_INFO.updated).toLocaleString() : null;
+  if (FX_INFO.source === "live") return `Live rates · updated ${when}` + (FX_INFO.stale ? " (server copy, refresh failed)" : "");
+  if (FX_INFO.source === "cached") return `Saved rates from ${when || "an earlier session"} · couldn't reach the live feed`;
+  return "Built-in estimates — live rates unavailable";
+}
+
+// ===== Currency Exchange page =====
+function runConverter() {
+  const amtEl = document.getElementById("fx-amount");
+  const from = document.getElementById("fx-from");
+  const to = document.getElementById("fx-to");
+  const out = document.getElementById("fx-result");
+  const line = document.getElementById("fx-rate-line");
+  if (!amtEl || !from || !to || !out) return;
+  const amount = parseFloat(amtEl.value);
+  const f = from.value, t = to.value;
+  const unit = convertCurrency(1, f, t);
+  out.innerText = isNaN(amount) ? "—" : fmtCurrency(convertCurrency(amount, f, t), t);
+  if (line) line.innerText = `1 ${f} = ${unit.toFixed(unit < 0.01 ? 6 : 4)} ${t}   ·   1 ${t} = ${(1 / unit).toFixed(1 / unit < 0.01 ? 6 : 4)} ${f}`;
+}
+
+function swapConverter() {
+  const from = document.getElementById("fx-from");
+  const to = document.getElementById("fx-to");
+  if (!from || !to) return;
+  const tmp = from.value; from.value = to.value; to.value = tmp;
+  runConverter();
+}
+
+function pickConverterCurrency(code) {
+  const from = document.getElementById("fx-from");
+  const to = document.getElementById("fx-to");
+  if (!from || !to) return;
+  from.value = code;
+  if (to.value === code) to.value = (appState.user.currency && appState.user.currency !== code) ? appState.user.currency : "SAR";
+  runConverter();
+  document.getElementById("fx-amount")?.focus();
+}
+
+function renderCurrencyView() {
+  const status = document.getElementById("fx-status");
+  if (status) status.innerText = fxStatusText();
+  const home = ((appState && appState.user && appState.user.currency) || "SAR").toUpperCase();
+  const homeLabel = document.getElementById("fx-home-label");
+  if (homeLabel) homeLabel.innerText = home;
+  const body = document.getElementById("fx-rates-body");
+  if (body) {
+    body.innerHTML = CURRENCY_META.filter(c => c.code !== home).map(c => {
+      const v = convertCurrency(1, c.code, home);
+      return `<tr onclick="pickConverterCurrency('${c.code}')" class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800">
+        <td class="py-2 px-3 font-bold">${c.code}</td>
+        <td class="py-2 px-3 text-slate-500 dark:text-slate-400">${c.name}</td>
+        <td class="py-2 px-3 text-right font-mono">${v.toFixed(v < 0.01 ? 6 : 4)} ${home}</td>
+      </tr>`;
+    }).join("");
+  }
+  runConverter();
+}
+// ===== end Currency Exchange page =====
 
 // --- APPLICATION STATE ---
 let appState = {};
@@ -306,12 +488,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (authUser) SBS_USER = authUser.username;
 
-  // Pull cloud finance state (Supabase) before loading local cache.
-  if (authUser) {
-    await loadFinanceFromCloud();
-  }
   loadState();
-  _cloudReady = true;
   if (authUser) {
     appState.user.name = authUser.name || appState.user.name;
     appState.user.email = authUser.email || appState.user.email;
@@ -326,6 +503,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
   initTheme();
+  initCurrencyExchange();
   initCategoriesDropdowns();
   initSidebar();
   renderDashboard();
@@ -384,26 +562,10 @@ function saveSetup() {
 function openAbout() { openModal("modal-about"); }
 function sendFeedback() {
   const text = (document.getElementById("feedback-text").value || "").trim();
-  if (!text) { showToast("Please write your feedback first."); return; }
-  // Try to store feedback in the database (Supabase via server)
-  fetch("/api/feedback", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: text })
-  }).then(r => r.json()).then(j => {
-    if (j && j.success) {
-      showToast(j.stored === false ? "Thanks! (offline — feedback not stored)" : "Thanks! Your feedback was sent to the developer.");
-      document.getElementById("feedback-text").value = "";
-    } else {
-      showToast((j && j.error) || "Could not send feedback.");
-    }
-  }).catch(() => {
-    // Fallback: open email app
-    const subject = encodeURIComponent("SBS Feedback / Suggestion");
-    const body = encodeURIComponent(text);
-    window.location.href = `mailto:your-email@example.com?subject=${subject}&body=${body}`;
-    showToast("Opening your email app...");
-  });
+  const subject = encodeURIComponent("SBS Feedback / Suggestion");
+  const body = encodeURIComponent(text || "I have a suggestion for Super Budgeting System.");
+  window.location.href = `mailto:your-email@example.com?subject=${subject}&body=${body}`;
+  showToast("Opening your email app...");
 }
 function replayTour() {
   closeModal("modal-about");
@@ -613,48 +775,8 @@ function loadState() {
 // ===== end loadState (L391) =====
 
 // ===== saveState (L395-L397) =====
-let _cloudReady = false;
-let _cloudSaveTimer = null;
 function saveState() {
   localStorage.setItem(stateKey(), JSON.stringify(appState));
-  if (_cloudReady && SBS_USER && typeof fetch === "function") {
-    clearTimeout(_cloudSaveTimer);
-    _cloudSaveTimer = setTimeout(() => {
-      fetch("/api/finance/save", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: appState })
-      }).catch(() => {});
-    }, 800);
-  }
-}
-
-// Load finance state from Supabase (via server); seed cloud from local if empty.
-async function loadFinanceFromCloud() {
-  if (!SBS_USER || typeof fetch !== "function") return false;
-  try {
-    const res = await fetch("/api/finance/load");
-    if (!res.ok) return false;
-    const j = await res.json();
-    if (j && j.success && j.data && typeof j.data === "object") {
-      localStorage.setItem(stateKey(), JSON.stringify(j.data));
-      return true;
-    }
-    // No cloud data yet — if local data exists, upload it once.
-    const local = localStorage.getItem(stateKey());
-    if (local) {
-      try {
-        await fetch("/api/finance/save", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: JSON.parse(local) })
-        });
-      } catch (e) {}
-    }
-    return false;
-  } catch (e) {
-    return false;
-  }
 }
 // ===== end saveState (L397) =====
 
@@ -744,6 +866,7 @@ function changeCurrency(newCurr) {
   renderTransactionsTable();
   renderSavings();
   renderReports();
+  renderCurrencyView();
   showToast(`Currency switched to ${newCurr}`);
 }
 // ===== end changeCurrency (L487) =====
@@ -803,6 +926,7 @@ function navigateTo(viewId) {
     savings: "Savings Goals & Targets",
     recurring: "Recurring Bills & Schedules",
     reports: "Executive Financial Statements",
+    currency: "Currency Exchange & Live Rates",
     "ai-insights": "AI Financial Advisor"
   };
   document.getElementById("page-title").innerText = titleMap[viewId] || "Super Budgeting";
@@ -815,6 +939,7 @@ function navigateTo(viewId) {
   if (viewId === "savings") renderSavings();
   if (viewId === "recurring") renderRecurring();
   if (viewId === "reports") renderReports();
+  if (viewId === "currency") renderCurrencyView();
   if (viewId === "ai-insights") renderAiInsights();
 
   lucide.createIcons();
@@ -1296,6 +1421,7 @@ function renderTransactionsTable() {
       <td class="p-3.5 font-bold text-slate-900 dark:text-white">
         <div class="flex items-center space-x-1.5 flex-wrap">
           <span>${escapeHtml(tx.merchant)}</span>
+          ${tx.fx ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300" title="Converted at 1 ${escapeHtml(tx.fx.currency)} = ${Number(tx.fx.rate).toFixed(4)} SAR">${Number(tx.fx.amount).toFixed(2)} ${escapeHtml(tx.fx.currency)}</span>` : ''}
           ${tx.ocrData ? `
             <button onclick="viewReceiptDetails('${tx.id}')" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:hover:bg-brand-900/80 dark:text-brand-300 border border-brand-200 dark:border-brand-800 transition inline-flex items-center shadow-xs" title="Inspect Full Receipt & Raw OCR">
               <i data-lucide="receipt" class="w-2.5 h-2.5 mr-1"></i> Receipt
@@ -1368,7 +1494,19 @@ function editTransaction(id) {
   document.getElementById("tx-edit-id").value = tx.id;
   document.getElementById("modal-tx-title").innerText = "Edit Financial Record";
   setTxType(tx.type);
-  document.getElementById("tx-amount").value = tx.amount;
+  // Show the amount as originally entered (foreign currency) when available;
+  // otherwise show the SAR-based amount in the user's display currency.
+  const curSel = document.getElementById("tx-currency");
+  if (tx.fx && tx.fx.amount) {
+    if (curSel) curSel.value = tx.fx.currency;
+    document.getElementById("tx-amount").value = tx.fx.amount;
+  } else {
+    const disp = (appState.user.currency || "SAR").toUpperCase();
+    if (curSel) curSel.value = disp;
+    document.getElementById("tx-amount").value = Number(convertFromSAR(tx.amount, disp).toFixed(2));
+  }
+  updateTxConversionPreview();
+  refreshRates(false);
   document.getElementById("tx-merchant").value = tx.merchant;
   document.getElementById("tx-category").value = tx.category;
   document.getElementById("tx-date").value = tx.date;
@@ -1396,11 +1534,25 @@ function handleSaveTransaction(e) {
     return;
   }
 
+  // Convert the entered amount to the SAR base using the live rate.
+  const entryCurrency = (document.getElementById("tx-currency")?.value || appState.user.currency || "SAR").toUpperCase();
+  const rateToSAR = getExchangeRateToSAR(entryCurrency);
+  const amountSAR = entryCurrency === "SAR" ? amount : Number(convertToSAR(amount, entryCurrency).toFixed(2));
+  const fx = entryCurrency === "SAR" ? null : {
+    currency: entryCurrency,
+    amount,
+    rate: rateToSAR,
+    source: FX_INFO.source,
+    rateDate: FX_INFO.updated || null
+  };
+
   if (editId) {
     const tx = appState.transactions.find(t => t.id === editId);
     if (tx) {
       tx.type = type;
-      tx.amount = amount;
+      tx.amount = amountSAR;
+      tx.currency = "SAR";
+      if (fx) tx.fx = fx; else delete tx.fx;
       tx.merchant = merchant;
       tx.category = category;
       tx.date = date;
@@ -1411,14 +1563,15 @@ function handleSaveTransaction(e) {
     const newTx = {
       id: "tx-" + Date.now(),
       type,
-      amount,
-      currency: appState.user.currency,
+      amount: amountSAR,
+      currency: "SAR",
       category,
       merchant,
       date,
       notes,
       method
     };
+    if (fx) newTx.fx = fx;
     appState.transactions.push(newTx);
   }
 
@@ -1426,9 +1579,34 @@ function handleSaveTransaction(e) {
   closeModal("modal-transaction");
   renderTransactionsTable();
   renderDashboard();
-  showToast(editId ? "Transaction updated." : "Transaction logged successfully!");
+  if (fx) {
+    showToast(`Logged! Converted ${amount.toFixed(2)} ${entryCurrency} ➔ ${formatMoney(amountSAR)} ${getCurrencySymbol()}`);
+  } else {
+    showToast(editId ? "Transaction updated." : "Transaction logged successfully!");
+  }
 }
 // ===== end handleSaveTransaction (L1133) =====
+
+// Live conversion preview inside the Add/Edit Transaction modal
+function updateTxConversionPreview() {
+  const box = document.getElementById("tx-fx-preview");
+  const curEl = document.getElementById("tx-currency");
+  if (!box || !curEl) return;
+  const code = (curEl.value || "SAR").toUpperCase();
+  if (code === "SAR") { box.classList.add("hidden"); return; }
+
+  const amount = parseFloat(document.getElementById("tx-amount")?.value);
+  const rate = getExchangeRateToSAR(code);
+  const resEl = document.getElementById("tx-fx-result");
+  const rateEl = document.getElementById("tx-fx-rate");
+  const statusEl = document.getElementById("tx-fx-status");
+
+  if (resEl) resEl.innerText = isNaN(amount) ? "—" : `${convertToSAR(amount, code).toFixed(2)} SAR`;
+  if (rateEl) rateEl.innerText = `1 ${code} = ${rate.toFixed(rate < 0.01 ? 6 : 4)} SAR` + (code === "USD" ? " (official peg)" : "");
+  if (statusEl) statusEl.innerText = fxStatusText();
+  box.classList.remove("hidden");
+}
+window.updateTxConversionPreview = updateTxConversionPreview;
 
 // ===== setTxType (L1137-L1153) =====
 function setTxType(type) {
@@ -3600,6 +3778,10 @@ function openTransactionModal() {
   document.getElementById("modal-tx-title").innerText = "Add Financial Record";
   document.getElementById("tx-date").value = new Date().toISOString().split("T")[0];
   document.getElementById("tx-input-method").value = "Manual";
+  const curSel = document.getElementById("tx-currency");
+  if (curSel) curSel.value = (appState.user.currency || "SAR").toUpperCase();
+  updateTxConversionPreview();
+  refreshRates(false); // pull the freshest live rates each time the form opens
   setTxType("expense");
   openModal("modal-transaction");
 }
@@ -4105,7 +4287,7 @@ function createNewAccount() {
 }
 // ===== end createNewAccount (L3748) =====
 
-// --- STREAMLINED ADD TRANSACTION CHOICE MODAL (SMART CAPTURE) ---
+// --- STREAMLINED ADD TRANSACTION CHOICE MODEL (SMART CAPTURE) ---
 // ===== openAddTransactionChoiceModal (L3753-L3822) =====
 function openAddTransactionChoiceModal() {
   let modal = document.getElementById("modal-add-choice");

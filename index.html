@@ -10,7 +10,7 @@
    SIDEBAR  (L509–599) : obsidian nav rail — logo, "New Entry", nav items,
                         account switcher, settings.
    HEADER   (L600–671) : breadcrumb, currency, AI status, theme toggle,
-                        "Add Transaction" (opens Smart Capture modal).
+                        "Add Transaction" (opens Smart Capture model).
    MAIN VIEWS (page-view sections, toggled by navigateTo in app.js):
      SECTION 1   DASHBOARD ............ L675  (hero, stat cards, charts,
                                               AI advisor, recent tx/previews)
@@ -642,6 +642,10 @@
           <button onclick="navigateTo('reports')" id="nav-reports" class="nav-item flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60">
             <i data-lucide="file-text" class="w-4 h-4 mr-3"></i>
             <span class="sidebar-label">Financial Reports</span>
+          </button>
+          <button onclick="navigateTo('currency')" id="nav-currency" class="nav-item flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60">
+            <i data-lucide="arrow-left-right" class="w-4 h-4 mr-3"></i>
+            <span class="sidebar-label">Currency Exchange</span>
           </button>
           <button onclick="navigateTo('ai-insights')" id="nav-ai-insights" class="nav-item flex items-center w-full px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60">
             <i data-lucide="sparkles" class="w-4 h-4 mr-3 text-amber-500"></i>
@@ -1406,6 +1410,61 @@
         </div>
 
         <!-- ==================== SECTION 7: AI ASSISTANT ==================== -->
+        <!-- ================= CURRENCY EXCHANGE ================= -->
+        <div id="view-currency" class="page-view hidden space-y-6">
+          <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <div class="lg:col-span-2 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+              <div class="flex items-center justify-between">
+                <h3 class="font-bold text-slate-900 dark:text-white text-sm">Currency Converter</h3>
+                <button id="fx-refresh-btn" onclick="refreshRates(true)" class="text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 flex items-center disabled:opacity-50">
+                  <i data-lucide="refresh-cw" class="w-3.5 h-3.5 mr-1"></i> Refresh rates
+                </button>
+              </div>
+              <div>
+                <label class="text-xs font-semibold block mb-1">Amount</label>
+                <input type="number" id="fx-amount" value="100" min="0" step="0.01" oninput="runConverter()" class="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 font-bold text-lg">
+              </div>
+              <div class="grid grid-cols-[1fr_auto_1fr] gap-2 items-end">
+                <div>
+                  <label class="text-xs font-semibold block mb-1">From</label>
+                  <select id="fx-from" onchange="runConverter()" class="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 text-xs"></select>
+                </div>
+                <button onclick="swapConverter()" title="Swap currencies" class="mb-0.5 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600">
+                  <i data-lucide="arrow-left-right" class="w-4 h-4"></i>
+                </button>
+                <div>
+                  <label class="text-xs font-semibold block mb-1">To</label>
+                  <select id="fx-to" onchange="runConverter()" class="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 text-xs"></select>
+                </div>
+              </div>
+              <div class="rounded-xl bg-brand-50 dark:bg-brand-900/20 p-4">
+                <p class="text-[11px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400 mb-1">Converted amount</p>
+                <p id="fx-result" class="text-2xl font-extrabold text-brand-700 dark:text-brand-300 break-words">—</p>
+                <p id="fx-rate-line" class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5"></p>
+              </div>
+              <p id="fx-status" class="text-[11px] text-slate-500 dark:text-slate-400"></p>
+              <p class="text-[10px] text-slate-400">Rates are indicative mid-market rates and may differ from what your bank or card charges. SAR/USD uses the official 3.75 peg. Data by <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener" class="underline">ExchangeRate-API</a>.</p>
+            </div>
+
+            <div class="lg:col-span-3 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
+              <h3 class="font-bold text-slate-900 dark:text-white text-sm mb-1">Rates against <span id="fx-home-label">SAR</span></h3>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-3">Your default currency is used as the reference. Click a row to convert from it. Change your default in Settings.</p>
+              <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="text-left text-slate-500 dark:text-slate-400">
+                      <th class="py-2 px-3 font-semibold">Code</th>
+                      <th class="py-2 px-3 font-semibold">Currency</th>
+                      <th class="py-2 px-3 font-semibold text-right">1 unit equals</th>
+                    </tr>
+                  </thead>
+                  <tbody id="fx-rates-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div id="view-ai-insights" class="page-view hidden space-y-6">
 
           <!-- AI Assistant Banner & Toggle -->
@@ -1472,9 +1531,23 @@
         <!-- Amount & Currency -->
         <div>
           <label class="font-semibold text-slate-700 dark:text-slate-300 block mb-1">Amount *</label>
-          <div class="relative">
-            <input type="number" step="0.01" min="0.01" id="tx-amount" required placeholder="0.00" class="w-full pl-3 pr-16 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
-            <span class="currency-symbol absolute right-3 top-2.5 text-xs font-bold text-slate-400">SAR</span>
+          <div class="flex items-stretch gap-2">
+            <input type="number" step="0.01" min="0.01" id="tx-amount" required placeholder="0.00" oninput="updateTxConversionPreview()" class="min-w-0 flex-1 pl-3 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+            <select id="tx-currency" onchange="updateTxConversionPreview()" title="Currency of this transaction" class="w-24 sm:w-28 px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+              <!-- Options populated by JS -->
+            </select>
+          </div>
+          <!-- Live conversion preview (shown when the chosen currency differs from SAR) -->
+          <div id="tx-fx-preview" class="hidden mt-2 p-2.5 rounded-lg bg-brand-50 dark:bg-brand-950/40 border border-brand-200 dark:border-brand-800 text-[11px] text-slate-700 dark:text-slate-300">
+            <div class="flex items-center justify-between gap-2">
+              <span>Saved to your budget as</span>
+              <strong id="tx-fx-result" class="text-slate-900 dark:text-white text-xs">—</strong>
+            </div>
+            <div id="tx-fx-rate" class="mt-1 text-slate-500 dark:text-slate-400"></div>
+            <div class="mt-1 flex items-center justify-between gap-2 text-slate-400">
+              <span id="tx-fx-status"></span>
+              <button type="button" onclick="refreshRates(true)" class="font-semibold text-brand-600 hover:underline">Refresh rate</button>
+            </div>
           </div>
         </div>
 
@@ -2111,7 +2184,6 @@
       <div class="flex items-center justify-between">
         <button onclick="replayTour()" class="text-xs text-lavender-600 hover:underline">Replay Tour</button>
         <div class="flex items-center gap-3">
-          <a href="/admin.html" target="_blank" class="text-xs text-slate-500 hover:underline">Admin</a>
           <a href="https://github.com/wajid4600w-art/super-budgeting-system/issues" target="_blank" class="text-xs text-slate-500 hover:underline">GitHub</a>
           <button onclick="sendFeedback()" class="px-4 py-2 rounded-lg accent-gloss text-xs font-bold">Send Feedback</button>
         </div>
@@ -2330,6 +2402,14 @@
             <i data-lucide="refresh-cw" class="w-4 h-4"></i>
           </div>
           <span class="flex-1 text-left">Recurring Bills</span>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+        </button>
+
+        <button onclick="closeMobileMore(); navigateTo('currency');" class="w-full p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-3 text-slate-700 dark:text-slate-200">
+          <div class="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+            <i data-lucide="arrow-left-right" class="w-4 h-4"></i>
+          </div>
+          <span class="flex-1 text-left">Currency Exchange</span>
           <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
         </button>
 
