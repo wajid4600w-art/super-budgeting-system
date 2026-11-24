@@ -831,6 +831,8 @@ function loadState() {
 // ===== end loadState (L391) =====
 
 // ===== saveState (L395-L397) =====
+let _cloudReady = false;
+let _cloudSaveTimer = null;
 function saveState() {
   localStorage.setItem(stateKey(), JSON.stringify(appState));
   if (_cloudReady && window.db && window.SBS_UID) {
