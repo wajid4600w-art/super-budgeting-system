@@ -13,8 +13,9 @@ function getActiveGeminiKey() {
     return appState.user.geminiApiKey;
   }
   const stored = (typeof localStorage !== "undefined") ? localStorage.getItem("sbs_gemini_api_key") : null;
-  if (stored) return stored;
-  return "";
+  if (stored && !stored.includes("YOUR_")) return stored;
+  // Fall back to the shared/default key (if configured), else empty.
+  return (typeof window !== "undefined" && window.SBS_DEFAULT_GEMINI_KEY) ? window.SBS_DEFAULT_GEMINI_KEY : "";
 }
 // ===== end getActiveGeminiKey (L18) =====
 
@@ -1212,6 +1213,17 @@ function renderDashboard() {
 // ===== end renderDashboard (L710) =====
 
 // ===== checkThresholdAlerts (L714-L756) =====
+// ===== pushNotification (L?) =====
+function pushNotification(type, title, message) {
+  if (!Array.isArray(appState.notifications)) appState.notifications = [];
+  const exists = appState.notifications.some(n => n.title === title && !n.read);
+  if (exists) return;
+  appState.notifications.unshift({ id: "n-" + Date.now(), type: type || "info", title, message, time: "Just now", read: false });
+  saveState();
+  if (typeof renderNotifications === "function") renderNotifications();
+}
+
+// ===== checkThresholdAlerts (L?) =====
 function checkThresholdAlerts(totalExpenses, budgetLimit, categorySpending) {
   const alertBanner = document.getElementById("dashboard-alert-banner");
   let triggered = false;
@@ -1251,6 +1263,8 @@ function checkThresholdAlerts(totalExpenses, budgetLimit, categorySpending) {
     alertBanner.classList.remove("hidden");
     document.getElementById("dashboard-alert-title").innerText = title;
     document.getElementById("dashboard-alert-message").innerText = msg;
+    // Also raise an in-app notification (deduped by title).
+    pushNotification("warning", title, msg);
   } else {
     alertBanner.classList.add("hidden");
   }
@@ -2317,6 +2331,21 @@ function parseReceiptTextHeuristically(rawText, fileName) {
 
 // Full 2-Stage Receipt OCR Pipeline with Vision AI and On-Device Tesseract Fallback
 // ===== handleReceiptUpload (L1698-L1837) =====
+// --- OCR processing countdown (approximate live timer) ---
+let _ocrTimer = null;
+function startOcrCountdown() {
+  let n = 12;
+  const el = document.getElementById("ocr-progress-subtext");
+  if (_ocrTimer) clearInterval(_ocrTimer);
+  const tick = () => {
+    if (el) el.innerText = `Analyzing with Gemini AI… ~${n}s (approx)`;
+    n = Math.max(1, n - 1);
+  };
+  tick();
+  _ocrTimer = setInterval(tick, 1000);
+}
+function stopOcrCountdown() { if (_ocrTimer) { clearInterval(_ocrTimer); _ocrTimer = null; } }
+
 async function handleReceiptUpload(e) {
   const file = (e && e.target && e.target.files && e.target.files[0]) || (e && e.file) || (e instanceof File ? e : null);
   if (!file) return;
@@ -2329,6 +2358,7 @@ async function handleReceiptUpload(e) {
   uploadBox.classList.add("hidden");
   progressBox.classList.remove("hidden");
   reviewBox.classList.add("hidden");
+  startOcrCountdown();
 
   if (e && e.target) e.target.value = "";
 
@@ -2384,7 +2414,7 @@ async function handleReceiptUpload(e) {
     // 3. Stage 1: Multimodal OCR Text Extraction via Direct Gemini API
     const activeKey = getActiveGeminiKey();
     if (activeKey) {
-      const visionModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
+      const visionModels = ['gemini-3.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
       const ocrPrompt = "Perform OCR on this receipt image. Read and transcribe every single line of printed text, store name, date, invoice numbers, line items with prices, tax/VAT, subtotal, and grand total verbatim. Return only the plain transcribed text.";
 
       for (const model of visionModels) {
@@ -2464,7 +2494,7 @@ ${rawOcrText}
 
 Return ONLY raw valid JSON.`;
 
-      const parseModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+      const parseModels = ['gemini-3.5-flash-lite', 'gemini-2.0-flash'];
       for (const model of parseModels) {
         try {
           const pRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`, {
@@ -2502,6 +2532,7 @@ Return ONLY raw valid JSON.`;
 
   } catch (err) {
     console.error("OCR upload error:", err);
+    stopOcrCountdown();
     showToast("Error scanning receipt image: " + err.message);
     const fallbackData = parseReceiptTextHeuristically("", file.name);
     startOcrProcess(file.name, fallbackData);
@@ -2737,6 +2768,7 @@ PAYMENT: Apple Pay (Mada)
 
 // ===== startOcrProcess (L2117-L2192) =====
 function startOcrProcess(fileName, preData = null) {
+  stopOcrCountdown();
   const uploadBox = document.getElementById("ocr-upload-box");
   const progressBox = document.getElementById("ocr-progress-container");
   const reviewBox = document.getElementById("ocr-review-container");
@@ -3227,7 +3259,7 @@ Extract transaction details into JSON matching this exact schema:
 // ===== end parseVoicePhrase (L2604) =====
 Return ONLY valid raw JSON.`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${activeKey}`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${activeKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3438,7 +3470,7 @@ ${JSON.stringify({
   categories: catSummaries
 })}`;
 
-        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${activeKey}`, {
+        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${activeKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

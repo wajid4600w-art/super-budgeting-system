@@ -12,3 +12,10 @@ window.FIREBASE_CONFIG = {
   appId: "1:661094969406:web:42aab782ac11e352d2616f",
   measurementId: "G-YGJTFHS0W0"
 };
+
+/*
+ * Optional shared/default Gemini API key used when a user hasn't set their own.
+ * Users can override it in Settings → "Optional Mobile AI Key" for faster results.
+ * (This is a browser key; restrict it in Google Cloud to your domains.)
+ */
+window.SBS_DEFAULT_GEMINI_KEY = "";
