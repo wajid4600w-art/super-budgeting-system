@@ -313,7 +313,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     saveState();
     const nameEl = document.getElementById("sidebar-user-name");
     if (nameEl) nameEl.innerText = appState.user.name;
+    const emailEl = document.getElementById("sidebar-user-email");
+    if (emailEl) emailEl.innerText = appState.user.email || "";
     updateUserAvatar();
+    if (!appState.user.setupComplete) {
+      setTimeout(openSetup, 350);
+    }
   }
   initTheme();
   initCategoriesDropdowns();
@@ -330,6 +335,121 @@ document.addEventListener("DOMContentLoaded", async () => {
 async function logout() {
   try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
   location.href = '/login.html';
+}
+
+// --- FIRST-TIME SETUP ---
+function openSetup() {
+  document.getElementById("setup-name").value = appState.user.name || "";
+  document.getElementById("setup-currency").value = appState.user.currency || "SAR";
+  document.getElementById("setup-threshold").value = appState.user.warningThreshold || 80;
+  document.getElementById("setup-theme").value = document.documentElement.classList.contains("dark") ? "dark" : "light";
+  openModal("modal-setup");
+}
+
+function saveSetup() {
+  const name = document.getElementById("setup-name").value.trim();
+  const currency = document.getElementById("setup-currency").value;
+  const threshold = parseInt(document.getElementById("setup-threshold").value) || 80;
+  const theme = document.getElementById("setup-theme").value;
+  if (name) appState.user.name = name;
+  appState.user.currency = currency;
+  appState.user.warningThreshold = threshold;
+  appState.user.theme = theme;
+  appState.user.setupComplete = true;
+  saveState();
+
+  const nameEl = document.getElementById("sidebar-user-name");
+  if (nameEl) nameEl.innerText = appState.user.name;
+  updateUserAvatar();
+  if (theme === "dark") document.documentElement.classList.add("dark");
+  else document.documentElement.classList.remove("dark");
+  const themeIcon = document.getElementById("theme-icon");
+  if (themeIcon) themeIcon.setAttribute("data-lucide", theme === "dark" ? "sun" : "moon");
+  if (typeof lucide !== "undefined") lucide.createIcons();
+
+  closeModal("modal-setup");
+  updateCurrencyLabels();
+  renderDashboard();
+  renderBudgets();
+  showToast("Preferences saved!");
+  setTimeout(startOnboarding, 200);
+}
+
+// --- ABOUT & FEEDBACK ---
+function openAbout() { openModal("modal-about"); }
+function sendFeedback() {
+  const text = (document.getElementById("feedback-text").value || "").trim();
+  const subject = encodeURIComponent("SBS Feedback / Suggestion");
+  const body = encodeURIComponent(text || "I have a suggestion for Super Budgeting System.");
+  window.location.href = `mailto:your-email@example.com?subject=${subject}&body=${body}`;
+  showToast("Opening your email app...");
+}
+function replayTour() {
+  closeModal("modal-about");
+  localStorage.removeItem("sbs_tour_done::" + (SBS_USER || "guest"));
+  startOnboarding();
+}
+
+// --- ONBOARDING TOUR ---
+const ONBOARD_STEPS = [
+  { target: null, text: "Welcome to Super Budgeting System! This quick tour highlights the main controls." },
+  { target: "#add-tx-btn", text: "Add Transaction — log income or expenses manually, scan a receipt, or use voice dictation." },
+  { target: "#nav-data-input", text: "Data Input — a dedicated page for drag & drop receipts, Ctrl+V paste, camera, and voice." },
+  { target: "#nav-transactions", text: "Transactions — review, edit, or delete every income and expense record." },
+  { target: "#nav-budgets", text: "Budgets & Limits — set a global ceiling and per-category limits with alerts." },
+  { target: "#nav-reports", text: "Financial Reports — view monthly/custom statements and export or print to PDF." },
+  { target: null, text: "You're all set! Use the + (New Entry) button anytime to jump back to the dashboard." }
+];
+let _onboardIndex = 0;
+
+function startOnboarding() {
+  const key = "sbs_tour_done::" + (SBS_USER || "guest");
+  if (localStorage.getItem(key) === "1") return;
+  _onboardIndex = 0;
+  document.getElementById("onboarding").classList.remove("hidden");
+  renderOnboardStep();
+}
+
+function renderOnboardStep() {
+  const step = ONBOARD_STEPS[_onboardIndex];
+  if (!step) { finishOnboarding(); return; }
+  document.getElementById("onboarding-step").innerText = `Step ${_onboardIndex + 1} of ${ONBOARD_STEPS.length}`;
+  document.getElementById("onboarding-text").innerText = step.text;
+  document.getElementById("onboarding-next").innerText = _onboardIndex === ONBOARD_STEPS.length - 1 ? "Done" : "Next";
+
+  const card = document.getElementById("onboarding-card");
+  const target = step.target ? document.querySelector(step.target) : null;
+  if (target) {
+    const r = target.getBoundingClientRect();
+    let top = r.bottom + 10;
+    let left = r.left;
+    if (top + 190 > window.innerHeight) top = Math.max(12, r.top - 200);
+    left = Math.min(Math.max(12, left), window.innerWidth - 300);
+    card.style.top = top + "px";
+    card.style.left = left + "px";
+    target.classList.add("onboard-highlight");
+  } else {
+    card.style.top = Math.max(12, window.innerHeight / 2 - 100) + "px";
+    card.style.left = Math.max(12, window.innerWidth / 2 - 144) + "px";
+  }
+}
+
+function nextOnboarding() {
+  document.querySelectorAll(".onboard-highlight").forEach(el => el.classList.remove("onboard-highlight"));
+  _onboardIndex++;
+  if (_onboardIndex >= ONBOARD_STEPS.length) { finishOnboarding(); return; }
+  renderOnboardStep();
+}
+
+function skipOnboarding() {
+  document.querySelectorAll(".onboard-highlight").forEach(el => el.classList.remove("onboard-highlight"));
+  finishOnboarding();
+}
+
+function finishOnboarding() {
+  document.getElementById("onboarding").classList.add("hidden");
+  document.querySelectorAll(".onboard-highlight").forEach(el => el.classList.remove("onboard-highlight"));
+  localStorage.setItem("sbs_tour_done::" + (SBS_USER || "guest"), "1");
 }
 
 // --- SIDEBAR HOVER + PIN ---
@@ -462,6 +582,8 @@ function loadState() {
 
   // Update UI user name & currency
   document.getElementById("sidebar-user-name").innerText = appState.user.name;
+  const emailEl = document.getElementById("sidebar-user-email");
+  if (emailEl) emailEl.innerText = appState.user.email || "";
   updateUserAvatar();
   const curSel = document.getElementById("currency-select");
   if (curSel) curSel.value = appState.user.currency;
@@ -887,9 +1009,42 @@ function renderCharts(categorySpending, totalIncome, totalExpenses) {
     }
   });
 
-  // Trend / Inflow vs Outflow Bar Chart (lime inflow, lavender outflow)
+  // Trend / Inflow vs Outflow Bar Chart — real last-3-months data
   const ctxTrend = document.getElementById("trendChart").getContext("2d");
-  if (trendChartInstance) trendChartInstance.destroy();
+  if (trendChartInstance) { trendChartInstance.destroy(); trendChartInstance = null; }
+
+  const trendEmpty = document.getElementById("trend-empty");
+  const trendCanvas = document.getElementById("trendChart");
+  const hasTx = appState.transactions.length > 0;
+
+  const now = new Date();
+  const months = [];
+  for (let i = 2; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    months.push({ key, label: d.toLocaleString("en-US", { month: "short" }), income: 0, expense: 0 });
+  }
+  const monthMap = {};
+  months.forEach(m => { monthMap[m.key] = m; });
+  appState.transactions.forEach(tx => {
+    const key = (tx.date || "").slice(0, 7);
+    if (monthMap[key]) {
+      if (tx.type === "income") monthMap[key].income += tx.amount;
+      else monthMap[key].expense += tx.amount;
+    }
+  });
+
+  if (!hasTx) {
+    if (trendEmpty) trendEmpty.classList.remove("hidden");
+    if (trendCanvas) trendCanvas.style.visibility = "hidden";
+    return;
+  }
+  if (trendEmpty) trendEmpty.classList.add("hidden");
+  if (trendCanvas) trendCanvas.style.visibility = "visible";
+
+  const trendLabels = months.map(m => m.label);
+  const incomeData = months.map(m => m.income);
+  const expenseData = months.map(m => m.expense);
 
   const limeGradient = ctxTrend.createLinearGradient(0, 0, 0, 260);
   limeGradient.addColorStop(0, isDark ? "#E4F993" : "#ECFCAA");
@@ -898,11 +1053,11 @@ function renderCharts(categorySpending, totalIncome, totalExpenses) {
   trendChartInstance = new Chart(ctxTrend, {
     type: "bar",
     data: {
-      labels: ["July", "August", "September (Current)"],
+      labels: trendLabels,
       datasets: [
         {
           label: "Inflows (Income)",
-          data: [5000, 5200, totalIncome],
+          data: incomeData,
           backgroundColor: limeGradient,
           borderColor: isDark ? "#E4F993" : "#D4ED76",
           borderWidth: { top: 1, left: 0, right: 0, bottom: 0 },
@@ -911,7 +1066,7 @@ function renderCharts(categorySpending, totalIncome, totalExpenses) {
         },
         {
           label: "Outflows (Expenses)",
-          data: [3100, 3400, totalExpenses],
+          data: expenseData,
           backgroundColor: isDark ? "rgba(220, 38, 38, 0.55)" : "rgba(248, 113, 113, 0.8)",
           borderColor: isDark ? "#DC2626" : "#F87171",
           borderWidth: { top: 1, left: 0, right: 0, bottom: 0 },
