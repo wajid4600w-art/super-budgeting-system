@@ -18,4 +18,4 @@ window.FIREBASE_CONFIG = {
  * (server-side) — never in the browser. Leave empty to require each user's own key.
  * Example: "https://ai.yourdomain.com/gemini"
  */
-window.SBS_AI_PROXY_URL = "";
+window.SBS_AI_PROXY_URL = "https://sbs-ai-proxy.sbs-ai.workers.dev";
