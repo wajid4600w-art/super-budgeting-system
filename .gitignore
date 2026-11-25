@@ -29,3 +29,7 @@ data/
 # Local binaries / scripts
 cloudflared.exe
 create_repo.ps1
+
+# Wrangler local state
+.wrangler/
+worker/.wrangler/
