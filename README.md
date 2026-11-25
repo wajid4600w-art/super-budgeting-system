@@ -39,7 +39,7 @@ Your data is stored locally in your browser (`localStorage`), so it works instan
 
 ### AI & insights
 - **AI financial advisor** — spending patterns, budget pace, period comparisons, and non-binding suggestions
-- **Model fallback** — Gemini primary, Nemotron fallback
+- **Model fallback** — Gemini primary
 - **AI control** — enable/disable analysis; output is always advisory
 
 ### Experience
@@ -75,7 +75,7 @@ Unauthenticated users are redirected to `login.html`. See [`FIREBASE_SETUP.md`](
 | :--- | :--- |
 | Frontend | HTML5, Tailwind CSS (CDN), Lucide icons, Chart.js, Tesseract.js |
 | Backend | Node.js (zero-dependency HTTP server, `crypto` for auth) |
-| AI | Google Gemini (vision/audio/text), OpenRouter (Nemotron fallback) |
+| AI | Google Gemini (vision/audio/text), OpenRouter |
 | Auth | scrypt password hashing, RFC-6238 TOTP 2FA, signed session cookies |
 | Storage | Server `data/` (accounts) + browser `localStorage` (per-user finance) |
 | Speech | Web Speech API, MediaRecorder |
