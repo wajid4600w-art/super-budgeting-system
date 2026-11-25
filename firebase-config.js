@@ -14,8 +14,8 @@ window.FIREBASE_CONFIG = {
 };
 
 /*
- * Optional shared/default Gemini API key used when a user hasn't set their own.
- * Users can override it in Settings → "Optional Mobile AI Key" for faster results.
- * (This is a browser key; restrict it in Google Cloud to your domains.)
+ * Secure AI proxy (Cloudflare Worker). Your Gemini key lives as a Worker secret
+ * (server-side) — never in the browser. Leave empty to require each user's own key.
+ * Example: "https://ai.yourdomain.com/gemini"
  */
-window.SBS_DEFAULT_GEMINI_KEY = "";
+window.SBS_AI_PROXY_URL = "";

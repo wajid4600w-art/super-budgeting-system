@@ -14,10 +14,23 @@ function getActiveGeminiKey() {
   }
   const stored = (typeof localStorage !== "undefined") ? localStorage.getItem("sbs_gemini_api_key") : null;
   if (stored && !stored.includes("YOUR_")) return stored;
-  // Fall back to the shared/default key (if configured), else empty.
-  return (typeof window !== "undefined" && window.SBS_DEFAULT_GEMINI_KEY) ? window.SBS_DEFAULT_GEMINI_KEY : "";
+  return "";
 }
 // ===== end getActiveGeminiKey (L18) =====
+
+// AI access: a user key (Settings) OR a server-side proxy (Cloudflare Worker).
+function hasGeminiAccess() {
+  return !!getActiveGeminiKey() || !!(typeof window !== "undefined" && window.SBS_AI_PROXY_URL);
+}
+// Build the Gemini endpoint URL: direct with the user's key, or via the secure proxy.
+function geminiUrl(model) {
+  const userKey = getActiveGeminiKey();
+  if (userKey) return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${userKey}`;
+  if (typeof window !== "undefined" && window.SBS_AI_PROXY_URL) {
+    return `${window.SBS_AI_PROXY_URL}?model=${encodeURIComponent(model)}`;
+  }
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=`;
+}
 
 // --- GLOBAL ERROR VISIBILITY (helps debug blank/broken UI) ---
 window.addEventListener("error", (e) => {
@@ -2411,15 +2424,14 @@ async function handleReceiptUpload(e) {
       }
     }
 
-    // 3. Stage 1: Multimodal OCR Text Extraction via Direct Gemini API
-    const activeKey = getActiveGeminiKey();
-    if (activeKey) {
+    // 3. Stage 1: Multimodal OCR Text Extraction via Gemini (user key or secure proxy)
+    if (hasGeminiAccess()) {
       const visionModels = ['gemini-3.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
       const ocrPrompt = "Perform OCR on this receipt image. Read and transcribe every single line of printed text, store name, date, invoice numbers, line items with prices, tax/VAT, subtotal, and grand total verbatim. Return only the plain transcribed text.";
 
       for (const model of visionModels) {
         try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`, {
+          const res = await fetch(geminiUrl(model), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2472,7 +2484,7 @@ async function handleReceiptUpload(e) {
 
     let parsedResult = null;
 
-    if (activeKey && rawOcrText.length > 10) {
+    if (hasGeminiAccess() && rawOcrText.length > 10) {
       const analyzePrompt = `You are an elite financial assistant.
 Analyze this receipt OCR text and return a JSON object with this exact structure:
 {
@@ -2497,7 +2509,7 @@ Return ONLY raw valid JSON.`;
       const parseModels = ['gemini-3.5-flash-lite', 'gemini-2.0-flash'];
       for (const model of parseModels) {
         try {
-          const pRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`, {
+          const pRes = await fetch(geminiUrl(model), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -3240,9 +3252,8 @@ async function parseVoicePhrase(transcript) {
     }
   }
 
-  // Direct Gemini API for GitHub Pages / Mobile
-  const activeKey = getActiveGeminiKey();
-  if (activeKey) {
+  // Gemini (user key or secure proxy) for GitHub Pages / Mobile
+  if (hasGeminiAccess()) {
     try {
       const today = new Date().toISOString().split("T")[0];
       const prompt = `You are a financial NLP parsing assistant for a budgeting app.
@@ -3256,10 +3267,9 @@ Extract transaction details into JSON matching this exact schema:
   "date": "YYYY-MM-DD",
   "type": "expense"
 }
-// ===== end parseVoicePhrase (L2604) =====
 Return ONLY valid raw JSON.`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${activeKey}`, {
+      const res = await fetch(geminiUrl('gemini-3.5-flash-lite'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3442,10 +3452,9 @@ async function generateAiAdvisorAudit() {
     }
   }
 
-  // Direct Gemini API for GitHub Pages / Mobile
+  // Gemini (user key or secure proxy) for GitHub Pages / Mobile
   if (!audit) {
-    const activeKey = getActiveGeminiKey();
-    if (activeKey) {
+    if (hasGeminiAccess()) {
       try {
         const systemPrompt = `You are an elite AI Personal Financial Advisor for Super Budgeting System.
 Analyze this financial summary and return ONLY valid JSON matching this schema
@@ -3458,7 +3467,6 @@ Analyze this financial summary and return ONLY valid JSON matching this schema
   "recommendations": ["Actionable step 1", "Actionable step 2"],
   "budgetAlerts": ["Alert on high category"]
 }
-// ===== end generateAiAdvisorAudit (L2780) =====
 Financial Profile:
 ${JSON.stringify({
   currency: appState.user.currency,
@@ -3470,7 +3478,7 @@ ${JSON.stringify({
   categories: catSummaries
 })}`;
 
-        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${activeKey}`, {
+        const gRes = await fetch(geminiUrl('gemini-3.5-flash-lite'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -1,0 +1,9 @@
+name = "sbs-ai-proxy"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+
+# Optional: serve from your own Cloudflare domain (uncomment and set your domain).
+# Then the app's SBS_AI_PROXY_URL would be https://ai.yourdomain.com/gemini
+# routes = [
+#   { pattern = "ai.yourdomain.com/gemini", zone_name = "yourdomain.com" }
+# ]
